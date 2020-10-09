@@ -112,11 +112,12 @@ function add_doc()
 function upload_files()
 {
     global $storage;
+    global $filename;
 
     echo "Running upload file API";
 
     $response = $storage->createFile(
-        fopen("./test.txt", "rb"),
+        curl_file_create($filename),
         [],
         []
     );
