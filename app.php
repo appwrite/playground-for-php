@@ -5,15 +5,15 @@ use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 
 
-$ENDPOINT = 'https://localhost/v1';
+$ENDPOINT = 'https=>//localhost/v1';
 $PROJECT_ID = '<Project ID>';
 $API_KEY = '<Secret API>';
 
-$client = Client();
+$client = new Client();
 
-$client->set_endpoint($ENDPOINT);
-$client->set_project($PROJECT_ID);
-$client->set_key($API_KEY);
+$client->setEndpoint($ENDPOINT);
+$client->setProject($PROJECT_ID);
+$client->setKey($API_KEY);
 
 $collectionID = NAN;
 $userId = NAN;
@@ -35,16 +35,16 @@ function create_collection()
 {
     # code...to create collection
     global $collectionID;
-    $database = Database($client);
-    $response = database.create_collection(
+    $database = new Database($client);
+    $response = $database->createCollection(
         'Movies',
         ['*'],
         ['*'],
         [
-            {'label': "Name", 'key': "name", 'type': "text",
-             'default': "Empty Name", 'required': True, 'array': False},
-            {'label': 'release_year', 'key': 'release_year', 'type': 'numeric',
-             'default': 1970, 'required': True, 'array': False}
+            ['label'=> "Name", 'key'=> "name", 'type'=> "text",
+             'default'=> "Empty Name", 'required'=> True, 'array'=> False],
+            ['label'=> 'release_year', 'key'=> 'release_year', 'type'=> 'numeric',
+             'default'=> 1970, 'required'=> True, 'array'=> False]
             ],
         );
         $collectionID = $response['$id'];
@@ -53,23 +53,23 @@ function create_collection()
 }
 
 function list_collection(){
-    $database = Database($client);
+    $database = new Database($client);
     echo "Running List Collection API";
-    $response = $database->list_collections();
+    $response = $database->listCollections();
     $collection = $response['$collection'][0];
     echo $collection;
 }
 
 function add_doc(){
-    $database = Database($client);
+    $database = new Database($client);
     echo "Running Add Document API";
 
-    $response = $database->create_document(
+    $response = $database->createDocument(
         $collectionId,
-        {
-            'name': "Spider Man",
-            'release_year': 1920,
-        },
+        [
+            'name'=> "Spider Man",
+            'release_year'=> 1920,
+        ],
         ['*'],
         ['*'] 
     );
@@ -79,27 +79,27 @@ function add_doc(){
 
 
 function list_doc(){
-    $storage = Storage($client);
+    $storage = new Storage($client);
     print("Running Upload File API");
-    $response = $storage->create_file(
-        fopen("test.txt",'rb'),
+    $response = $storage->createFile(
+        fopen("test.txt",'w+'),
         [],
         []
     );
 }
 
 function upload_files(){
-    $storage = Storage($client);
+    $storage = new Storage($client);
     print("RUnning upload file API");
-    $response = $storage->create_file(
-        fopen("./test.txt","rb"),
+    $response = $storage->createFile(
+        fopen("./test.txt","w"),
         [],
         []
     );
 }
 
 function list_files(){
-    $storage = Storage($client);
+    $storage = new Storage($client);
     print("Running List Files API");
     $result = $storage.list_files();
 
@@ -110,7 +110,7 @@ function list_files(){
 }
 
 function delete_file(){
-    storage = Storage($client);
+    $storage = new Storage($client);
     print("Running Delete File API");
     $result = $storage.list_files();
     $first_file_id = $result['files'][0]['$id'];
@@ -121,7 +121,7 @@ function delete_file(){
 function create_user($email,$password,$name){
     global $userId;
     print("Running create user API");
-    $response = users.create(
+    $response =users.create(
         $email,
         $password,
         $name
@@ -131,32 +131,34 @@ function create_user($email,$password,$name){
 }
 
 function list_user(){
-    $users = Users($client);
+    $users = new Users($client);
     print("Running list user api");
-    $response = $users.list();
+    $response = $users->list();
     print($response);
 }
 
 function run_all_tasks(){
     $name = date();
-    ccreate_collection();
+    create_collection();
     list_collection();
     add_doc();
     list_doc();
-    upload_file();
+    upload_files();
     list_files();
     delete_file();
     create_user(
-        name + '@test.com',
-        name + '@123',
-        name
+        $name + '@test.com',
+        $name + '@123',
+        $name
     );
     list_user();
 
 }
 
-void main(){
+function main(){
     run_all_tasks();
     print("succesfully run playground");
 }
+
+main();
 ?>
