@@ -1,22 +1,24 @@
 <?php
+
 use Appwrite\Client;
-use Appwrite\Services\Users;
 use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
-
+use Appwrite\Services\Users;
 
 $ENDPOINT = 'https://localhost/v1';
 $PROJECT_ID = '<Project ID>';
 $API_KEY = '<Secret API>';
 
-$client = Client();
+$client = new Client();
 
-$client->set_endpoint($ENDPOINT);
-$client->set_project($PROJECT_ID);
-$client->set_key($API_KEY);
+$client->setEndpoint($ENDPOINT);
+$client->setProject($PROJECT_ID);
+$client->setKey($API_KEY);
 
-$collectionID = NAN;
-$userId = NAN;
+$collectionID = $userID = 0;
+$database = new Database($client);
+$storage = new Storage($client);
+$users = new Users($client);
 
 # API Calls
 #   - api.create_collection
@@ -29,134 +31,193 @@ $userId = NAN;
 #   - api.create_user
 #   - api.list_user
 
-# List of API definations
+# List of API definitions
 
+/**
+ * @throws Exception
+ */
 function create_collection()
 {
     # code...to create collection
-    global $collectionID;
-    $database = Database($client);
-    $response = database.create_collection(
-        'Movies',
+    global $collectionID, $database;
+
+    $response = $database->createCollection('Movies',
         ['*'],
         ['*'],
         [
-            {'label': "Name", 'key': "name", 'type': "text",
-             'default': "Empty Name", 'required': True, 'array': False},
-            {'label': 'release_year', 'key': 'release_year', 'type': 'numeric',
-             'default': 1970, 'required': True, 'array': False}
+            [
+                'label' => "Name",
+                'key' => "name",
+                'type' => "text",
+                'default' => "Empty Name",
+                'required' => true,
+                'array' => false
             ],
-        );
-        $collectionID = $response['$id'];
-        echo $response;   
+            [
+                'label' => 'release_year',
+                'key' => 'release_year',
+                'type' => 'numeric',
+                'default' => 1970,
+                'required' => true,
+                'array' => false
+            ]
+        ]
+    );
 
+    $collectionID = $response['id'];
+
+    var_dump($response);
 }
 
-function list_collection(){
-    $database = Database($client);
+/**
+ * @throws Exception
+ */
+function list_collection()
+{
+    global $database;
+
     echo "Running List Collection API";
-    $response = $database->list_collections();
+
+    $response = $database->listCollections();
     $collection = $response['$collection'][0];
-    echo $collection;
+
+    var_dump($collection);
 }
 
-function add_doc(){
-    $database = Database($client);
+/**
+ * @throws Exception
+ */
+function add_doc()
+{
+    global $collectionId, $database;
+
     echo "Running Add Document API";
 
-    $response = $database->create_document(
+    $response = $database->createDocument(
         $collectionId,
-        {
-            'name': "Spider Man",
-            'release_year': 1920,
-        },
+        [
+            'name' => "Spider Man",
+            'release_year' => 1920,
+        ],
         ['*'],
-        ['*'] 
+        ['*']
     );
 
-    print($response);
+    var_dump($response);
 }
 
+/**
+ * @throws Exception
+ */
+function upload_files()
+{
+    global $storage;
 
-function list_doc(){
-    $storage = Storage($client);
-    print("Running Upload File API");
-    $response = $storage->create_file(
-        fopen("test.txt",'rb'),
+    echo "Running upload file API";
+
+    $response = $storage->createFile(
+        fopen("./test.txt", "rb"),
         [],
         []
     );
+
+    var_dump($response);
 }
 
-function upload_files(){
-    $storage = Storage($client);
-    print("RUnning upload file API");
-    $response = $storage->create_file(
-        fopen("./test.txt","rb"),
-        [],
-        []
-    );
-}
+/**
+ * @throws Exception
+ */
+function list_files()
+{
+    global $storage;
 
-function list_files(){
-    $storage = Storage($client);
-    print("Running List Files API");
-    $result = $storage.list_files();
+    echo "Running List Files API";
+
+    $result = $storage->listFiles();
 
     $file_count = $result['sum'];
-    print($file_count);
     $files = $result['files'];
-    print($files);
+
+    var_dump($file_count, $files);
 }
 
-function delete_file(){
-    storage = Storage($client);
-    print("Running Delete File API");
-    $result = $storage.list_files();
+/**
+ * @throws Exception
+ */
+function delete_file()
+{
+    global $storage;
+
+    echo "Running Delete File API";
+
+    $result = $storage->listFiles();
     $first_file_id = $result['files'][0]['$id'];
-    $response = $storage.delete_file($first_file_id);
-    print($response);
+    $response = $storage->deleteFile($first_file_id);
+
+    var_dump($response);
 }
 
-function create_user($email,$password,$name){
-    global $userId;
-    print("Running create user API");
-    $response = users.create(
+/**
+ * @param $email
+ * @param $password
+ * @param $name
+ * @throws Exception
+ */
+function create_user($email, $password, $name)
+{
+    global $userId, $users;
+
+    echo "Running create user API";
+
+    $response = $users->create(
         $email,
         $password,
         $name
     );
     $userId = $response['$id'];
-    print($response);
+
+    var_dump($response);
 }
 
-function list_user(){
-    $users = Users($client);
-    print("Running list user api");
-    $response = $users.list();
-    print($response);
+/**
+ * @throws Exception
+ */
+function list_user()
+{
+    global $users;
+
+    echo "Running list user api";
+
+    $response = $users->list();
+
+    var_dump($response);
 }
 
-function run_all_tasks(){
-    $name = date();
-    ccreate_collection();
+/**
+ * @throws Exception
+ */
+function run_all_tasks()
+{
+    $name = time();
+    create_collection();
     list_collection();
     add_doc();
-    list_doc();
-    upload_file();
+    //list_doc();
+    upload_files();
     list_files();
     delete_file();
     create_user(
-        name + '@test.com',
-        name + '@123',
-        name
+        $name . '@test.com',
+        $name . '@123',
+        $name
     );
     list_user();
-
 }
 
-void main(){
+try {
     run_all_tasks();
-    print("succesfully run playground");
+} catch (Exception $e) {
+    die($e->getMessage());
 }
-?>
+
+echo "successfully run playground";
