@@ -1,4 +1,11 @@
 {
+    "name": "debo/playground-for-php",
+    "authors": [
+        {
+            "name": "sparkingdark",
+            "email": "debomastet335@gmail.com"
+        }
+    ],
     "require": {
         "appwrite/appwrite": "^1.1"
     }
