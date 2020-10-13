@@ -6,14 +6,10 @@
             "email": "debomastet335@gmail.com"
         }
     ],
-    "config": {
-        "platform": {
-            "php":"^5.6.1"
-        }
-    },
     "require": {
         "appwrite/appwrite": "^1.1",
         "jfcherng/php-color-output": "^2.0",
-        "ext-curl":"*"
+        "ext-curl":"*",
+        "php":"5.6.1"
     }
 }

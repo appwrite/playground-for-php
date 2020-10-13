@@ -78,7 +78,7 @@ function list_collection()
 {
     global $database;
 
-    echo str_cli_color("Running List Collection API", 'f_green, b_black');
+    echo "Running List Collection API";
 
     $response = $database->listCollections();
 
@@ -97,7 +97,7 @@ function add_doc()
 
     $collectionId = "0";
 
-    echo str_cli_color("Running Add Document API", 'f_green,b_black');
+    echo "Running Add Document API";
 
     $response = $database->createDocument(
         $collectionId,
@@ -120,7 +120,7 @@ function upload_files()
     global $storage;
     $filename = 'test.txt';
 
-    echo str_cli_color("Running upload file API", 'f_green,b_black');
+    echo "Running upload file API";
 
     $response = $storage->createFile(
         curl_file_create($filename),
@@ -138,7 +138,7 @@ function list_files()
 {
     global $storage;
 
-    echo str_cli_color("Running List Files API", 'f_green,b_black');
+    echo "Running List Files API";
 
     $result = $storage->listFiles();
 
@@ -156,7 +156,7 @@ function delete_file()
     global $storage;
 
 
-    echo str_cli_color("Running Delete File API", 'f_green', 'b_black');
+    echo "Running Delete File API";
 
     $result = $storage->listFiles();
     $first_file_id = 'test.txt';
@@ -176,7 +176,7 @@ function create_user($email, $password, $name)
 {
     global $userId, $users;
 
-    echo str_cli_color("Running create user API", 'f_green,b_black');
+    echo "Running create user API";
 
     $response = $users->create(
         $email,
@@ -195,7 +195,7 @@ function list_user()
 {
     global $users;
 
-    echo str_cli_color("Running list user api", "f_green,b_black");
+    echo "Running list user api";
 
     $response = $users->list();
 
@@ -212,7 +212,6 @@ function run_all_tasks()
     create_collection();
     list_collection();
     add_doc();
-    //list_doc();
     upload_files();
     list_files();
     delete_file();
@@ -230,4 +229,4 @@ try {
     die($e->getMessage());
 }
 
-echo str_cli_color("successfully run playground", "f_green,b_black");
+echo "successfully run playground";
