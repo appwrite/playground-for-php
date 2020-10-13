@@ -22,22 +22,22 @@ $storage = new Storage($client);
 $users = new Users($client);
 
 # API Calls
-#   - api.create_collection
-#   - api.list_collection
-#   - api.add_doc
-#   - api.list_doc
-#   - api.upload_file
-#   - api.list_files
-#   - api.delete_file
-#   - api.create_user
-#   - api.list_user
+#   - api.createCollection
+#   - api.listCollection
+#   - api.addDoc
+#   - api.listDoc
+#   - api.uploadFile
+#   - api.listFiles
+#   - api.deleteFile
+#   - api.createUser
+#   - api.listUser
 
 # List of API definitions
 
 /**
  * @throws Exception
  */
-function create_collection()
+function createCollection()
 {
     # code...to create collection
     global $collectionId, $dataBase;
@@ -72,7 +72,7 @@ function create_collection()
 /**
  * @throws Exception
  */
-function list_collection()
+function listCollection()
 {
     global $dataBase;
 
@@ -85,7 +85,7 @@ function list_collection()
 /**
  * @throws Exception
  */
-function add_doc()
+function addDoc()
 {
     global $collectionId;
     global $dataBase;
@@ -108,7 +108,7 @@ function add_doc()
 /**
  * @throws Exception
  */
-function upload_files()
+function uploadFiles()
 {
     global $storage;
 
@@ -126,7 +126,7 @@ function upload_files()
 /**
  * @throws Exception
  */
-function list_files()
+function listFiles()
 {
     global $storage;
 
@@ -140,7 +140,7 @@ function list_files()
 /**
  * @throws Exception
  */
-function delete_file()
+function deleteFile()
 {
     global $storage;
 
@@ -158,7 +158,7 @@ function delete_file()
  * @param $name
  * @throws Exception
  */
-function create_user($email, $password, $name)
+function createUser($email, $password, $name)
 {
     global $userId, $users;
 
@@ -175,7 +175,7 @@ function create_user($email, $password, $name)
 /**
  * @throws Exception
  */
-function list_user()
+function listUser()
 {
     global $users;
 
@@ -190,18 +190,18 @@ function list_user()
 function run_all_tasks()
 {
     $name = time();
-    create_collection();
-    list_collection();
-    add_doc();
-    upload_files();
-    list_files();
-    delete_file();
-    create_user(
+    createCollection();
+    listCollection();
+    addDoc();
+    uploadFiles();
+    listFiles();
+    deleteFile();
+    createUser(
         $name . '@test.com',
         $name . '@123',
         $name
     );
-    list_user();
+    listUser();
 }
 
 try {
