@@ -1,20 +1,26 @@
 <?php
+
 require_once './vendor/autoload.php';
 use Appwrite\Client;
 use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
+
+$ch = curl_init();
+$certificate_location = "/usr/local/openssl-0.9.8/certs/cacert.pem";
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $certificate_location);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $certificate_location);
+
 $ENDPOINT = 'https://localhost/v1';
-$PROJECT_ID = '<Project ID>';
-$API_KEY = '<Secret API>';
+$PROJECT_ID = '5f82e30055888';
+$API_KEY = 'fe57886fa579badd40b576ae25cd704551b7a7649175010443b64d9d291db7ceba12180155f6bf7f8029cd2efbfe7b99368e1d96d788d28950fc6e6422373b34c3ddb5cb0bbe4a0bb9ed104ac307989bc6428a439dd071b0479b6b4e39aa68f0be1fc06b4ddb0ee42424ee25ae075229c4af7ff6abe9000f9e6d749990ccc8d0';
 
 $client = new Client();
 
 $client->setEndpoint($ENDPOINT);
 $client->setProject($PROJECT_ID);
 $client->setKey($API_KEY);
-
 $collectionID = $userID = 0;
 $database = new Database($client);
 $storage = new Storage($client);
@@ -199,6 +205,7 @@ function list_user()
  */
 function run_all_tasks()
 {
+    
     $name = time();
     create_collection();
     list_collection();

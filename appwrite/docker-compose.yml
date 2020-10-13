@@ -1,0 +1,130 @@
+version: '3'
+
+services:
+    traefik:
+        image: traefik:v2.1.4
+        command:
+            - --providers.file.directory=/storage/config
+            - --providers.file.watch=true
+            - --providers.docker=true
+            - --entrypoints.web.address=:80
+            - --entrypoints.websecure.address=:443
+        restart: unless-stopped
+        ports:
+            - 80:80
+            - 443:443
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - appwrite-config:/storage/config:ro
+            - appwrite-certificates:/storage/certificates:ro
+        depends_on:
+            - appwrite
+        networks:
+            - gateway
+            - appwrite
+    
+    appwrite:
+        image: appwrite/appwrite:0.6.2
+        restart: unless-stopped
+        networks:
+            - appwrite
+        labels:
+            - traefik.http.routers.appwrite.rule=PathPrefix(`/`)
+            - traefik.http.routers.appwrite-secure.rule=PathPrefix(`/`)
+            - traefik.http.routers.appwrite-secure.tls=true
+        volumes:
+            - appwrite-uploads:/storage/uploads:rw
+            - appwrite-cache:/storage/cache:rw
+            - appwrite-config:/storage/config:rw
+            - appwrite-certificates:/storage/certificates:rw
+        depends_on:
+            - mariadb
+            - redis
+            - smtp
+            - clamav
+            - influxdb
+            - telegraf
+        environment:
+            - _APP_ENV=production
+            - _APP_OPENSSL_KEY_V1=your-secret-key
+            - _APP_DOMAIN=localhost
+            - _APP_DOMAIN_TARGET=localhost
+            - _APP_REDIS_HOST=redis
+            - _APP_REDIS_PORT=6379
+            - _APP_DB_HOST=mariadb
+            - _APP_DB_PORT=3306
+            - _APP_DB_SCHEMA=appwrite
+            - _APP_DB_USER=user
+            - _APP_DB_PASS=password
+            - _APP_INFLUXDB_HOST=influxdb
+            - _APP_INFLUXDB_PORT=8086
+            - _APP_STATSD_HOST=telegraf
+            - _APP_STATSD_PORT=8125
+            - _APP_SMTP_HOST=smtp
+            - _APP_SMTP_PORT=25
+
+    mariadb:
+        image: appwrite/mariadb:1.0.3
+        restart: unless-stopped
+        networks:
+            - appwrite
+        volumes:
+            - appwrite-mariadb:/var/lib/mysql:rw
+        environment:
+            - MYSQL_ROOT_PASSWORD=rootsecretpassword
+            - MYSQL_DATABASE=appwrite
+            - MYSQL_USER=user
+            - MYSQL_PASSWORD=password
+        command: 'mysqld --innodb-flush-method=fsync'
+
+    smtp:
+        image: appwrite/smtp:1.0.1
+        restart: unless-stopped
+        networks:
+            - appwrite
+        environment:
+            - MAILNAME=appwrite
+            - RELAY_NETWORKS=:192.168.0.0/24:10.0.0.0/16
+
+    redis:
+        image: redis:5.0
+        restart: unless-stopped
+        networks:
+            - appwrite
+        volumes:
+            - appwrite-redis:/data:rw
+
+    clamav:
+        image: appwrite/clamav:1.0.9
+        restart: unless-stopped
+        networks:
+            - appwrite
+        volumes:
+            - appwrite-uploads:/storage/uploads
+
+    influxdb:
+        image: influxdb:1.6
+        restart: unless-stopped
+        networks:
+            - appwrite
+        volumes:
+            - appwrite-influxdb:/var/lib/influxdb:rw
+
+    telegraf:
+        image: appwrite/telegraf:1.0.0
+        restart: unless-stopped
+        networks:
+            - appwrite
+
+networks:
+    gateway:
+    appwrite:
+
+volumes:
+    appwrite-mariadb:
+    appwrite-redis:
+    appwrite-cache:
+    appwrite-uploads:
+    appwrite-certificates:
+    appwrite-influxdb:
+    appwrite-config:
