@@ -7,17 +7,17 @@ use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
 
-$ENDPOINT = 'https://localhost/v1';
-$PROJECT_ID = '<Your Project ID />';
-$API_KEY = '<Your Project Secret Api key/>';
+$endPoint = 'https://localhost/v1';
+$projectId = '<Your Project ID />';
+$apiKey = '<Your Project Secret Api key/>';
 
 $client = new Client();
 
-$client->setEndpoint($ENDPOINT);
-$client->setProject($PROJECT_ID);
-$client->setKey($API_KEY);
-$collectionID = $userID = 0;
-$database = new Database($client);
+$client->setEndpoint($endPoint);
+$client->setProject($projectId);
+$client->setKey($apiKey);
+$collectionId = $userId = 0;
+$dataBase = new Database($client);
 $storage = new Storage($client);
 $users = new Users($client);
 
@@ -40,9 +40,9 @@ $users = new Users($client);
 function create_collection()
 {
     # code...to create collection
-    global $collectionID, $database;
+    global $collectionId, $dataBase;
 
-    $response = $database->createCollection(
+    $response = $dataBase->createCollection(
         'Movies',
         ['*'],
         ['*'],
@@ -66,7 +66,7 @@ function create_collection()
         ]
     );
 
-    $collectionID = $response['id'];
+    $collectionId = $response['id'];
 
     var_dump($response);
 }
@@ -76,11 +76,11 @@ function create_collection()
  */
 function list_collection()
 {
-    global $database;
+    global $dataBase;
 
     echo "Running List Collection API";
 
-    $response = $database->listCollections();
+    $response = $dataBase->listCollections();
 
     $collection = $response['$collection'];
 
@@ -93,13 +93,13 @@ function list_collection()
 function add_doc()
 {
     global $collectionId;
-    global $database;
+    global $dataBase;
 
     $collectionId = "0";
 
     echo "Running Add Document API";
 
-    $response = $database->createDocument(
+    $response = $dataBase->createDocument(
         $collectionId,
         [
             'name' => "Spider Man",
@@ -118,12 +118,12 @@ function add_doc()
 function upload_files()
 {
     global $storage;
-    $filename = 'test.txt';
+    $fileName = 'test.txt';
 
     echo "Running upload file API";
 
     $response = $storage->createFile(
-        curl_file_create($filename),
+        curl_file_create($fileName),
         [],
         []
     );
@@ -142,10 +142,10 @@ function list_files()
 
     $result = $storage->listFiles();
 
-    $file_count = $result['sum'];
+    $fileCount = $result['sum'];
     $files = $result['files'];
 
-    var_dump($file_count, $files);
+    var_dump($fileCount, $files);
 }
 
 /**
@@ -159,9 +159,9 @@ function delete_file()
     echo "Running Delete File API";
 
     $result = $storage->listFiles();
-    $first_file_id = 'test.txt';
+    $firstFileId = 'test.txt';
     //$first_file_id = $result['files'][0]['$id'];
-    $response = $storage->deleteFile($first_file_id);
+    $response = $storage->deleteFile($firstFileId);
 
     var_dump($response);
 }
