@@ -5,16 +5,20 @@ use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
+$ch = curl_init();
+$certificate_location = "/usr/local/openssl-0.9.8/certs/cacert.pem";
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $certificate_location);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $certificate_location);
+
 $ENDPOINT = 'https://localhost/v1';
-$PROJECT_ID = '<Project ID>';
-$API_KEY = '<Secret API>';
+$PROJECT_ID = '<Your Project ID />';
+$API_KEY = '<Your Project Secret Api key/>';
 
 $client = new Client();
 
 $client->setEndpoint($ENDPOINT);
 $client->setProject($PROJECT_ID);
 $client->setKey($API_KEY);
-
 $collectionID = $userID = 0;
 $database = new Database($client);
 $storage = new Storage($client);
@@ -76,10 +80,11 @@ function list_collection()
 {
     global $database;
 
-    echo "Running List Collection API";
+    echo str_cli_color("Running List Collection API",'f_green, b_black');
 
     $response = $database->listCollections();
-    $collection = $response['$collection'][0];
+    
+    $collection = $response['$collection'];
 
     var_dump($collection);
 }
@@ -89,15 +94,18 @@ function list_collection()
  */
 function add_doc()
 {
-    global $collectionId, $database;
+    global $collectionId;
+    global $database;
 
-    echo "Running Add Document API";
+    $collectionId = "0";
+
+    echo str_cli_color("Running Add Document API",'f_green,b_black');
 
     $response = $database->createDocument(
         $collectionId,
         [
             'name' => "Spider Man",
-            'release_year' => 1920,
+            'release_year' => '1920',
         ],
         ['*'],
         ['*']
@@ -112,9 +120,9 @@ function add_doc()
 function upload_files()
 {
     global $storage;
-    global $filename;
+    $filename = 'test.txt';
 
-    echo "Running upload file API";
+    echo str_cli_color("Running upload file API",'f_green,b_black');
 
     $response = $storage->createFile(
         curl_file_create($filename),
@@ -132,7 +140,7 @@ function list_files()
 {
     global $storage;
 
-    echo "Running List Files API";
+    echo str_cli_color("Running List Files API",'f_green,b_black');
 
     $result = $storage->listFiles();
 
@@ -148,11 +156,13 @@ function list_files()
 function delete_file()
 {
     global $storage;
+    
 
-    echo "Running Delete File API";
+    echo str_cli_color("Running Delete File API",'f_green','b_black');
 
     $result = $storage->listFiles();
-    $first_file_id = $result['files'][0]['$id'];
+    $first_file_id = 'test.txt';
+    //$first_file_id = $result['files'][0]['$id'];
     $response = $storage->deleteFile($first_file_id);
 
     var_dump($response);
@@ -168,7 +178,7 @@ function create_user($email, $password, $name)
 {
     global $userId, $users;
 
-    echo "Running create user API";
+    echo str_cli_color("Running create user API",'f_green,b_black');
 
     $response = $users->create(
         $email,
@@ -187,7 +197,7 @@ function list_user()
 {
     global $users;
 
-    echo "Running list user api";
+    echo str_cli_color("Running list user api","f_green,b_black");
 
     $response = $users->list();
 
@@ -199,6 +209,7 @@ function list_user()
  */
 function run_all_tasks()
 {
+    
     $name = time();
     create_collection();
     list_collection();
@@ -221,4 +232,5 @@ try {
     die($e->getMessage());
 }
 
-echo "successfully run playground";
+echo str_cli_color("successfully run playground","f_green,b_black");
+?>

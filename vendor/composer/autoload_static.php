@@ -6,7 +6,15 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit698b7f62b4b1c3c864a49910c18a9d70
 {
+    public static $files = array (
+        '45b89995831374eefdfc4161161938f6' => __DIR__ . '/..' . '/jfcherng/php-color-output/src/helpers.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
+        'J' => 
+        array (
+            'Jfcherng\\Utility\\' => 17,
+        ),
         'A' => 
         array (
             'Appwrite\\' => 9,
@@ -14,6 +22,10 @@ class ComposerStaticInit698b7f62b4b1c3c864a49910c18a9d70
     );
 
     public static $prefixDirsPsr4 = array (
+        'Jfcherng\\Utility\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/jfcherng/php-color-output/src',
+        ),
         'Appwrite\\' => 
         array (
             0 => __DIR__ . '/..' . '/appwrite/appwrite/src/Appwrite',

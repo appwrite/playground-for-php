@@ -6,5 +6,6 @@ $vendorDir = dirname(dirname(__FILE__));
 $baseDir = dirname($vendorDir);
 
 return array(
+    'Jfcherng\\Utility\\' => array($vendorDir . '/jfcherng/php-color-output/src'),
     'Appwrite\\' => array($vendorDir . '/appwrite/appwrite/src/Appwrite'),
 );
