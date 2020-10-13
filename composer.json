@@ -1,13 +1,19 @@
 {
-    "name": "debo/playground-for-php",
+    "name": "appwrite/playground-for-php",
     "authors": [
         {
             "name": "sparkingdark",
             "email": "debomastet335@gmail.com"
         }
     ],
+    "config": {
+        "platform": {
+            "php":"^5.6.1"
+        }
+    },
     "require": {
         "appwrite/appwrite": "^1.1",
-        "jfcherng/php-color-output": "^2.0"
+        "jfcherng/php-color-output": "^2.0",
+        "ext-curl":"*"
     }
 }

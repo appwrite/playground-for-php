@@ -1,14 +1,11 @@
 <?php
 require_once './vendor/autoload.php';
+
 use Appwrite\Client;
 use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
-$ch = curl_init();
-$certificate_location = "/usr/local/openssl-0.9.8/certs/cacert.pem";
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, $certificate_location);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $certificate_location);
 
 $ENDPOINT = 'https://localhost/v1';
 $PROJECT_ID = '<Your Project ID />';
@@ -45,7 +42,8 @@ function create_collection()
     # code...to create collection
     global $collectionID, $database;
 
-    $response = $database->createCollection('Movies',
+    $response = $database->createCollection(
+        'Movies',
         ['*'],
         ['*'],
         [
@@ -80,10 +78,10 @@ function list_collection()
 {
     global $database;
 
-    echo str_cli_color("Running List Collection API",'f_green, b_black');
+    echo str_cli_color("Running List Collection API", 'f_green, b_black');
 
     $response = $database->listCollections();
-    
+
     $collection = $response['$collection'];
 
     var_dump($collection);
@@ -99,7 +97,7 @@ function add_doc()
 
     $collectionId = "0";
 
-    echo str_cli_color("Running Add Document API",'f_green,b_black');
+    echo str_cli_color("Running Add Document API", 'f_green,b_black');
 
     $response = $database->createDocument(
         $collectionId,
@@ -122,7 +120,7 @@ function upload_files()
     global $storage;
     $filename = 'test.txt';
 
-    echo str_cli_color("Running upload file API",'f_green,b_black');
+    echo str_cli_color("Running upload file API", 'f_green,b_black');
 
     $response = $storage->createFile(
         curl_file_create($filename),
@@ -140,7 +138,7 @@ function list_files()
 {
     global $storage;
 
-    echo str_cli_color("Running List Files API",'f_green,b_black');
+    echo str_cli_color("Running List Files API", 'f_green,b_black');
 
     $result = $storage->listFiles();
 
@@ -156,9 +154,9 @@ function list_files()
 function delete_file()
 {
     global $storage;
-    
 
-    echo str_cli_color("Running Delete File API",'f_green','b_black');
+
+    echo str_cli_color("Running Delete File API", 'f_green', 'b_black');
 
     $result = $storage->listFiles();
     $first_file_id = 'test.txt';
@@ -178,7 +176,7 @@ function create_user($email, $password, $name)
 {
     global $userId, $users;
 
-    echo str_cli_color("Running create user API",'f_green,b_black');
+    echo str_cli_color("Running create user API", 'f_green,b_black');
 
     $response = $users->create(
         $email,
@@ -197,7 +195,7 @@ function list_user()
 {
     global $users;
 
-    echo str_cli_color("Running list user api","f_green,b_black");
+    echo str_cli_color("Running list user api", "f_green,b_black");
 
     $response = $users->list();
 
@@ -209,7 +207,7 @@ function list_user()
  */
 function run_all_tasks()
 {
-    
+
     $name = time();
     create_collection();
     list_collection();
@@ -232,5 +230,4 @@ try {
     die($e->getMessage());
 }
 
-echo str_cli_color("successfully run playground","f_green,b_black");
-?>
+echo str_cli_color("successfully run playground", "f_green,b_black");
