@@ -65,9 +65,7 @@ function create_collection()
             ]
         ]
     );
-
     $collectionId = $response['id'];
-
     var_dump($response);
 }
 
@@ -79,11 +77,8 @@ function list_collection()
     global $dataBase;
 
     echo "Running List Collection API";
-
     $response = $dataBase->listCollections();
-
     $collection = $response['$collection'];
-
     var_dump($collection);
 }
 
@@ -96,9 +91,7 @@ function add_doc()
     global $dataBase;
 
     $collectionId = "0";
-
     echo "Running Add Document API";
-
     $response = $dataBase->createDocument(
         $collectionId,
         [
@@ -118,10 +111,9 @@ function add_doc()
 function upload_files()
 {
     global $storage;
+
     $fileName = 'test.txt';
-
     echo "Running upload file API";
-
     $response = $storage->createFile(
         curl_file_create($fileName),
         [],
@@ -139,12 +131,9 @@ function list_files()
     global $storage;
 
     echo "Running List Files API";
-
     $result = $storage->listFiles();
-
     $fileCount = $result['sum'];
     $files = $result['files'];
-
     var_dump($fileCount, $files);
 }
 
@@ -155,14 +144,11 @@ function delete_file()
 {
     global $storage;
 
-
     echo "Running Delete File API";
-
     $result = $storage->listFiles();
     $firstFileId = 'test.txt';
     //$first_file_id = $result['files'][0]['$id'];
     $response = $storage->deleteFile($firstFileId);
-
     var_dump($response);
 }
 
@@ -177,14 +163,12 @@ function create_user($email, $password, $name)
     global $userId, $users;
 
     echo "Running create user API";
-
     $response = $users->create(
         $email,
         $password,
         $name
     );
     $userId = $response['$id'];
-
     var_dump($response);
 }
 
@@ -196,9 +180,7 @@ function list_user()
     global $users;
 
     echo "Running list user api";
-
     $response = $users->list();
-
     var_dump($response);
 }
 
@@ -207,7 +189,6 @@ function list_user()
  */
 function run_all_tasks()
 {
-
     $name = time();
     create_collection();
     list_collection();
