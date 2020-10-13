@@ -1,44 +1,43 @@
 <?php
-require_once './vendor/autoload.php';
+require __DIR__ . '/global.inc.php';
 
 use Appwrite\Client;
 use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
+$client = (new Client())
+    ->setEndpoint(ENDPOINT)
+    ->setProject(PROJECT_ID)
+    ->setKey(API_KEY);
 
-$endpoint = 'https://localhost/v1';
-$projectId = '<Your Project ID />';
-$apiKey = '<Your Project Secret Api key/>';
+$collectionId = 0;
 
-$client = new Client();
-
-$client->setEndpoint($endpoint);
-$client->setProject($projectId);
-$client->setKey($apiKey);
-$collectionId = $userId = 0;
 $dataBase = new Database($client);
 $storage = new Storage($client);
 $users = new Users($client);
 
-# API Calls
-#   - api.createCollection
-#   - api.listCollection
-#   - api.addDoc
-#   - api.uploadFile
-#   - api.listFiles
-#   - api.deleteFile
-#   - api.createUser
-#   - api.listUser
-
-# List of API definitions
+/**
+ * Covered API methods
+ *
+ * - createCollection
+ * - listCollection
+ * - addDoc
+ * - uploadFile
+ * - listFiles
+ * - deleteFile
+ * - createUser
+ * - listUser
+ */
 
 /**
+ * Create a new Collection.
+ *
+ * @see https://appwrite.io/docs/server/database?sdk=php#createCollection
  * @throws Exception
  */
 function createCollection()
 {
-    # code...to create collection
     global $collectionId, $dataBase;
 
     $response = $dataBase->createCollection(
@@ -55,7 +54,7 @@ function createCollection()
                 'array' => false
             ],
             [
-                'label' => 'release_year',
+                'label' => 'Release Year',
                 'key' => 'release_year',
                 'type' => 'numeric',
                 'default' => 1970,
@@ -64,148 +63,182 @@ function createCollection()
             ]
         ]
     );
-    $collectionId = $response['id'];
-    var_dump($response);
+
+    $collectionId = (string)$response['id'];
+
+    return [
+        'call' => 'api.createCollection',
+        'response' => $response
+    ];
 }
 
 /**
+ * Get a list of all the user collections.
+ * On admin mode, this endpoint will return a list of all of the project collections.
+ *
+ * @see https://appwrite.io/docs/server/database?sdk=php#listCollections
+ * @return array
  * @throws Exception
  */
-function listCollection()
+function listCollections()
 {
     global $dataBase;
 
-    echo 'Running List Collection API';
-    $response = $dataBase->listCollections();
-    $collection = $response['$collection'];
-    var_dump($collection);
+    return [
+        'call' => 'api.listCollections',
+        'response' => $dataBase->listCollections()
+    ];
 }
 
 /**
+ * Create a new Document.
+ * Before using this route, you should create a new collection resource
+ *
+ * @see https://appwrite.io/docs/server/database?sdk=php#createDocument
+ * @return array
  * @throws Exception
  */
 function addDoc()
 {
-    global $collectionId,$dataBase;
+    global $collectionId, $dataBase;
 
-
-
-    echo 'Running Add Document API';
     $response = $dataBase->createDocument(
-        (string)$collectionId,
+        $collectionId,
         [
-            'name' => "Spider Man",
-            'release_year' => '1920',
+            'name' => 'Spider Man',
+            'release_year' => 1920,
         ],
         ['*'],
         ['*']
     );
 
-    var_dump($response);
+    return [
+        'call' => 'api.addDoc',
+        'response' => $response
+    ];
 }
 
 /**
+ * Create a new file.
+ * The user who creates the file will automatically be assigned to read and write
+ * access unless he has passed custom values for read and write arguments.
+ *
+ * @see https://appwrite.io/docs/client/storage?sdk=php#createFile
+ * @return array
  * @throws Exception
  */
-function uploadFiles()
+function createFile()
 {
     global $storage;
 
-    $fileName = 'test.txt';
-    echo 'Running upload file API';
     $response = $storage->createFile(
-        curl_file_create($fileName),
+        curl_file_create(__DIR__ . '/test.txt'),
         [],
         []
     );
 
-    var_dump($response);
+    return [
+        'call' => 'api.uploadFile',
+        'response' => $response
+    ];
 }
 
 /**
+ * Get a list of all the user files.
+ * You can use the query params to filter your results. On admin mode,
+ * this endpoint will return a list of all of the project files.
+ *
+ * @see https://appwrite.io/docs/client/storage?sdk=php#listFiles
+ * @return array
  * @throws Exception
  */
 function listFiles()
 {
     global $storage;
 
-    echo 'Running List Files API';
-    $result = $storage->listFiles();
-    $fileCount = $result['sum'];
-    $files = $result['files'];
-    var_dump($fileCount, $files);
+    return [
+        'call' => 'api.listFiles',
+        'response' => $storage->listFiles()
+    ];
 }
 
 /**
+ * Delete a file by its unique ID.
+ * Only users with write permissions have access to delete this resource.
+ *
+ * @see https://appwrite.io/docs/client/storage?sdk=php#deleteFile
+ * @return array
  * @throws Exception
  */
 function deleteFile()
 {
     global $storage;
 
-    echo 'Running Delete File API';
-    $result = $storage->listFiles();
-    $firstFileId = 'test.txt';
-    $response = $storage->deleteFile($firstFileId);
-    var_dump($response);
+    return [
+        'call' => 'api.deleteFile',
+        'response' => $storage->deleteFile('test.txt')
+    ];
 }
 
 /**
- * @param $email
- * @param $password
- * @param $name
+ * Create a new user.
+ *
+ * @see https://appwrite.io/docs/server/users?sdk=php#create
+ * @return array
  * @throws Exception
  */
-function createUser($email, $password, $name)
-{
-    global $userId, $users;
-
-    echo 'Running create user API';
-    $response = $users->create(
-        $email,
-        $password,
-        $name
-    );
-    $userId = $response['$id'];
-    var_dump($response);
-}
-
-/**
- * @throws Exception
- */
-function listUser()
+function createUser()
 {
     global $users;
 
-    echo 'Running list user api';
-    $response = $users->list();
-    var_dump($response);
+    $suffix = time();
+
+    return [
+        'call' => 'api.createUser',
+        'response' => $users->create("email{$suffix}@example.com", 'password', "Example {$suffix}")
+    ];
 }
 
 /**
+ * Get a list of all the project users.
+ *
+ * @see https://appwrite.io/docs/server/users?sdk=php#list
  * @throws Exception
  */
-function runAllTasks()
+function listUsers()
 {
-    $name = time();
-    createCollection();
-    listCollection();
-    addDoc();
-    uploadFiles();
-    listFiles();
-    deleteFile();
-    createUser(
-        $name . '@test.com',
-        $name . '@123',
-        $name
-    );
-    listUser();
+    global $users;
+
+    return [
+        'call' => 'api.listUsers',
+        'response' => $users->list()
+    ];
 }
 
+/**
+ * Execute all functions, collect their return values
+ * and print everything at the end.
+ */
 try {
-    runAllTasks();
+    $ret = [];
+    $methods = [
+        'createCollection',
+        'listCollections',
+        'addDoc',
+        'createFile',
+        'listFiles',
+        'deleteFile',
+        'createUser',
+        'listUsers'
+    ];
+
+    foreach ($methods as $method) {
+        if (function_exists($method)) {
+            $ret[] = $method();
+        }
+    }
+
+    appwriteDebug($ret);
 } catch (Exception $e) {
     die($e->getMessage());
 }
-
-echo 'successfully run playground';
