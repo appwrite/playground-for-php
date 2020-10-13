@@ -7,13 +7,13 @@ use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 
 
-$endPoint = 'https://localhost/v1';
+$endpoint = 'https://localhost/v1';
 $projectId = '<Your Project ID />';
 $apiKey = '<Your Project Secret Api key/>';
 
 $client = new Client();
 
-$client->setEndpoint($endPoint);
+$client->setEndpoint($endpoint);
 $client->setProject($projectId);
 $client->setKey($apiKey);
 $collectionId = $userId = 0;
@@ -25,7 +25,6 @@ $users = new Users($client);
 #   - api.createCollection
 #   - api.listCollection
 #   - api.addDoc
-#   - api.listDoc
 #   - api.uploadFile
 #   - api.listFiles
 #   - api.deleteFile
@@ -48,10 +47,10 @@ function createCollection()
         ['*'],
         [
             [
-                'label' => "Name",
-                'key' => "name",
-                'type' => "text",
-                'default' => "Empty Name",
+                'label' => 'Name',
+                'key' => 'name',
+                'type' => 'text',
+                'default' => 'Empty Name',
                 'required' => true,
                 'array' => false
             ],
@@ -76,7 +75,7 @@ function listCollection()
 {
     global $dataBase;
 
-    echo "Running List Collection API";
+    echo 'Running List Collection API';
     $response = $dataBase->listCollections();
     $collection = $response['$collection'];
     var_dump($collection);
@@ -87,13 +86,13 @@ function listCollection()
  */
 function addDoc()
 {
-    global $collectionId;
-    global $dataBase;
+    global $collectionId,$dataBase;
 
-    $collectionId = "0";
-    echo "Running Add Document API";
+
+
+    echo 'Running Add Document API';
     $response = $dataBase->createDocument(
-        $collectionId,
+        (string)$collectionId,
         [
             'name' => "Spider Man",
             'release_year' => '1920',
@@ -113,7 +112,7 @@ function uploadFiles()
     global $storage;
 
     $fileName = 'test.txt';
-    echo "Running upload file API";
+    echo 'Running upload file API';
     $response = $storage->createFile(
         curl_file_create($fileName),
         [],
@@ -130,7 +129,7 @@ function listFiles()
 {
     global $storage;
 
-    echo "Running List Files API";
+    echo 'Running List Files API';
     $result = $storage->listFiles();
     $fileCount = $result['sum'];
     $files = $result['files'];
@@ -144,10 +143,9 @@ function deleteFile()
 {
     global $storage;
 
-    echo "Running Delete File API";
+    echo 'Running Delete File API';
     $result = $storage->listFiles();
     $firstFileId = 'test.txt';
-    //$first_file_id = $result['files'][0]['$id'];
     $response = $storage->deleteFile($firstFileId);
     var_dump($response);
 }
@@ -162,7 +160,7 @@ function createUser($email, $password, $name)
 {
     global $userId, $users;
 
-    echo "Running create user API";
+    echo 'Running create user API';
     $response = $users->create(
         $email,
         $password,
@@ -179,7 +177,7 @@ function listUser()
 {
     global $users;
 
-    echo "Running list user api";
+    echo 'Running list user api';
     $response = $users->list();
     var_dump($response);
 }
@@ -187,7 +185,7 @@ function listUser()
 /**
  * @throws Exception
  */
-function run_all_tasks()
+function runAllTasks()
 {
     $name = time();
     createCollection();
@@ -205,9 +203,9 @@ function run_all_tasks()
 }
 
 try {
-    run_all_tasks();
+    runAllTasks();
 } catch (Exception $e) {
     die($e->getMessage());
 }
 
-echo "successfully run playground";
+echo 'successfully run playground';
