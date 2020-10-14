@@ -1,14 +1,41 @@
 {
-    "name": "appwrite/playground-for-php",
-    "authors": [
-        {
-            "name": "sparkingdark",
-            "email": "debomastet335@gmail.com"
-        }
-    ],
-    "require": {
-        "appwrite/appwrite": "^1.1",
-        "ext-curl":"*",
-        "php":"5.6.1"
+  "name": "appwrite/playground-for-php",
+  "type": "project",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "sparkingdark",
+      "email": "debomastet335@gmail.com",
+      "homepage": "https://myexpindark.me",
+      "role": "Developer"
+    },
+    {
+      "name": "Eldad A. Fux",
+      "email": "eldad@appwrite.io",
+      "homepage": "https://appwrite.io",
+      "role": "Developer"
+    },
+    {
+      "name": "Sascha Greuel",
+      "email": "hello@1-2.dev",
+      "homepage": "https://1-2.dev",
+      "role": "Developer"
     }
+  ],
+  "require": {
+    "php": ">=5.6",
+    "ext-curl": "*",
+    "appwrite/appwrite": "^1.1"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "preferred-install": "dist"
+  },
+  "support": {
+    "email": "team@appwrite.io",
+    "issues": "https://github.com/appwrite/playground-for-php/issues",
+    "chat": "https://discord.gg/GSeTUeA",
+    "source": "https://github.com/appwrite/playground-for-php",
+    "docs": "https://appwrite.io/docs"
+  }
 }
