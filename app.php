@@ -64,7 +64,7 @@ function createCollection()
         ]
     );
 
-    $collectionId = (string)$response['id'];
+    $collectionId = $response['$id'];
 
     return [
         'call' => 'api.createCollection',
