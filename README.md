@@ -32,3 +32,4 @@ sudo chmod +x run.sh
 ./run.sh
 
 ```
+After that you need to edit the `globel.inc.php` by entering the api key and project id to run it successfully.
