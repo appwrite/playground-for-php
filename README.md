@@ -23,7 +23,7 @@ This playground doesn't include any Php best practices but rather intended to sh
 4. Copy the project_id, endpoint, secret key from your Appwrite Console.
 4. Update project_id, endpoint, secret key by copied from the console in global.inc.php file where stated.
 5. Install dependencies using  composer (`composer install`).
-5. Execute the command `php app.js`
+5. Execute the command `php app.php`
 6. You will see the JSON response in the console.
 
 ### API Covered in Playground.
