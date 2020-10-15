@@ -1,4 +1,4 @@
-# Appwrite's Node.js Playground 🎮
+# Appwrite's Php Playground 🎮
 
 Appwrite playground is a simple way to explore the Appwrite API & Appwrite Php SDK. Use the source code of this repository to learn how to use the different Appwrite Php SDK features.
 
