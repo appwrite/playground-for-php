@@ -11,7 +11,7 @@ $client = (new Client())
     ->setProject(PROJECT_ID)
     ->setKey(API_KEY);
 
-$collectionId = 0;
+$collectionId = "";
 
 $dataBase = new Database($client);
 $storage = new Storage($client);

@@ -1,35 +1,50 @@
-# playground-for-php
+# Appwrite's Node.js Playground 🎮
 
-This is Php playground for [appwrite](https://www.appwrite.io).
+Appwrite playground is a simple way to explore the Appwrite API & Appwrite Php SDK. Use the source code of this repository to learn how to use the different Appwrite Php SDK features.
 
-To install it and run in your local environment do these commands:
+[![Php Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://www.php-fig.org/psr/psr-12/)
 
-```
-git clone https://github.com/appwrite/appwrite
-cd appwrite
+**Work in progress**
 
-docker-compose up -d
+## Get Started
 
-cd ~
-```
+This playground doesn't include any Php best practices but rather intended to show some of the most simple examples and use cases of using the Appwrite API in your Php application and server.
 
-after doing that the appwrite server is up and testing of php playground need to do by these command:
+## System Requirements
+* A system with Php installed.
+* You have readily available AppWrite running instance (localhost in most cases).
+* Create a project in AppWrite instance using console.
+* Generate a secret key in the AppWrite instance using console.
 
-```
-git clone https://github.com/appwrite/playground-for-php
+### Installation
+1. Clone this repository.
+2. cd into to repository.
+3. Open the app.php file found in the root of the cloned repository.
+4. Copy the project_id, endpoint, secret key from your Appwrite Console.
+4. Update project_id, endpoint, secret key by copied from the console in global.inc.php file where stated.
+5. Install dependencies using  composer (`composer install`).
+5. Execute the command `php app.js`
+6. You will see the JSON response in the console.
 
-composer install
+### API Covered in Playground.
+* Create Collection
+* List Collection
+* Add Document
+* List Documents
+* Upload File
+* Create User
+* List User
 
-php app.php
+## Contributing
 
-```
+All code contributions - including those of people having commit access - must go through a pull request and approved by a core developer before being merged. This is to ensure proper review of all the code.
 
-And now you are now succesfully ran the php playground.
-I add a run.sh for all users of mac,linux,windows under wsl to automate all the commands required just once.
+We truly ❤️ pull requests! If you wish to help, you can learn more about how you can contribute to this project in the [contribution guide](https://github.com/appwrite/appwrite/blob/master/CONTRIBUTING.md).
 
-```
-sudo chmod +x run.sh
-./run.sh
+## Security
 
-```
-After that you need to edit the `globel.inc.php` by entering the api key and project id to run it successfully.
+For security issues, kindly email us [security@appwrite.io](mailto:security@appwrite.io) instead of posting a public issue in GitHub.
+
+## Follow Us
+
+Join our growing community around the world! Follow us on [Twitter](https://twitter.com/appwrite_io), [Facebook Page](https://www.facebook.com/appwrite.io), [Facebook Group](https://www.facebook.com/groups/appwrite.developers/) or join our Discord Server [Discord community](https://discord.gg/GSeTUeA) for more help, ideas and discussions.
