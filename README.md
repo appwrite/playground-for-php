@@ -2,7 +2,7 @@
 
 Appwrite playground is a simple way to explore the Appwrite API & Appwrite PHP SDK. Use the source code of this repository to learn how to use the different Appwrite PHP SDK features.
 
-[![PHP Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://www.Php-fig.org/psr/psr-12/)
+[![PHP Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://www.php-fig.org/psr/psr-12/)
 
 **Work in progress**
 
