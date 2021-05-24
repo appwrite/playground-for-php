@@ -9,6 +9,7 @@ use Appwrite\Services\Users;
 $client = (new Client())
     ->setEndpoint(ENDPOINT)
     ->setProject(PROJECT_ID)
+    // ->setJWT('jwt') // Use this to authenticate with JWT generated from client
     ->setKey(API_KEY);
 
 $collectionId = "";
@@ -16,6 +17,7 @@ $collectionId = "";
 $dataBase = new Database($client);
 $storage = new Storage($client);
 $users = new Users($client);
+$account = new Account($client);
 
 /**
  * Covered API methods
@@ -28,6 +30,7 @@ $users = new Users($client);
  * - deleteFile
  * - createUser
  * - listUser
+ * - getAccount
  */
 
 /**
@@ -202,7 +205,7 @@ function createUser()
 /**
  * Get a list of all the project users.
  *
- * @see https://appwrite.io/docs/server/users?sdk=php#list
+ * @see https://appwrite.io/docs/server/users?sdk=php#usersList
  * @throws Exception
  */
 function listUsers()
@@ -212,6 +215,22 @@ function listUsers()
     return [
         'call' => 'api.listUsers',
         'response' => $users->list()
+    ];
+}
+
+/**
+ * Get an account of authenticated user. Works only with JWT
+ *
+ * @see https://appwrite.io/docs/server/account?sdk=php#accountGet
+ * @throws Exception
+ */
+function getAccount()
+{
+    global $account;
+
+    return [
+        'call' => 'api.getAccount',
+        'response' => $account->get()
     ];
 }
 
@@ -229,7 +248,8 @@ try {
         'listFiles',
         'deleteFile',
         'createUser',
-        'listUsers'
+        'listUsers',
+        // 'getAccount' // works only with JWT
     ];
 
     foreach ($methods as $method) {
