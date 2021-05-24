@@ -36,7 +36,7 @@ $account = new Account($client);
 /**
  * Create a new Collection.
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#createCollection
+ * @see https://appwrite.io/docs/server/database?sdk=php#databaseCreateCollection
  * @throws Exception
  */
 function createCollection()
@@ -79,7 +79,7 @@ function createCollection()
  * Get a list of all the user collections.
  * On admin mode, this endpoint will return a list of all of the project collections.
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#listCollections
+ * @see https://appwrite.io/docs/server/database?sdk=php#databaseListCollections
  * @return array
  * @throws Exception
  */
@@ -97,7 +97,7 @@ function listCollections()
  * Create a new Document.
  * Before using this route, you should create a new collection resource
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#createDocument
+ * @see https://appwrite.io/docs/server/database?sdk=php#databaseCreateDocument
  * @return array
  * @throws Exception
  */
@@ -126,7 +126,7 @@ function addDoc()
  * The user who creates the file will automatically be assigned to read and write
  * access unless he has passed custom values for read and write arguments.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#createFile
+ * @see https://appwrite.io/docs/client/storage?sdk=php#storageCreateFile
  * @return array
  * @throws Exception
  */
@@ -151,7 +151,7 @@ function createFile()
  * You can use the query params to filter your results. On admin mode,
  * this endpoint will return a list of all of the project files.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#listFiles
+ * @see https://appwrite.io/docs/client/storage?sdk=php#storageListFiles
  * @return array
  * @throws Exception
  */
@@ -169,7 +169,7 @@ function listFiles()
  * Delete a file by its unique ID.
  * Only users with write permissions have access to delete this resource.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#deleteFile
+ * @see https://appwrite.io/docs/client/storage?sdk=php#storageDeleteFile
  * @return array
  * @throws Exception
  */
@@ -186,7 +186,7 @@ function deleteFile()
 /**
  * Create a new user.
  *
- * @see https://appwrite.io/docs/server/users?sdk=php#create
+ * @see https://appwrite.io/docs/server/users?sdk=php#usersCreate
  * @return array
  * @throws Exception
  */
