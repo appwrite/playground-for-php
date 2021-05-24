@@ -25,7 +25,7 @@
   "require": {
     "php": ">=5.6",
     "ext-curl": "*",
-    "appwrite/appwrite": "^2.0.0"
+    "appwrite/appwrite": "^2.1.1"
   },
   "config": {
     "optimize-autoloader": true,
