@@ -44,30 +44,27 @@ function createCollection()
     global $collectionId, $dataBase;
 
     $response = $dataBase->createCollection(
+        'mvoies',
         'Movies',
-        ['*'],
-        ['*'],
-        [
-            [
-                'label' => 'Name',
-                'key' => 'name',
-                'type' => 'text',
-                'default' => 'Empty Name',
-                'required' => true,
-                'array' => false
-            ],
-            [
-                'label' => 'Release Year',
-                'key' => 'release_year',
-                'type' => 'numeric',
-                'default' => 1970,
-                'required' => true,
-                'array' => false
-            ]
-        ]
+        ['role:all'],
+        ['role:all']
     );
 
     $collectionId = $response['$id'];
+
+    $response1 = database.createStringAttribute(
+        $collectionId,
+        'name',
+        255,
+        true,
+    )
+    $response2 = database.createIntegerAttribute(
+        $collectionId,
+        'release_year',
+        0,
+        9999,
+        true
+    )
 
     return [
         'call' => 'api.createCollection',
@@ -107,12 +104,13 @@ function addDoc()
 
     $response = $dataBase->createDocument(
         $collectionId,
+        'unique()',
         [
             'name' => 'Spider Man',
             'release_year' => 1920,
         ],
-        ['*'],
-        ['*']
+        ['role:all'],
+        ['role:all']
     );
 
     return [
@@ -135,6 +133,7 @@ function createFile()
     global $storage;
 
     $response = $storage->createFile(
+        'unique()',
         curl_file_create(__DIR__ . '/test.txt'),
         [],
         []
@@ -198,7 +197,7 @@ function createUser()
 
     return [
         'call' => 'api.createUser',
-        'response' => $users->create("email{$suffix}@example.com", 'password', "Example {$suffix}")
+        'response' => $users->create('unique()', "email{$suffix}@example.com", 'password', "Example {$suffix}")
     ];
 }
 
