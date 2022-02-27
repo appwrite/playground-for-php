@@ -121,6 +121,24 @@ function addDoc()
 }
 
 /**
+ * Delete collection
+ * Delete a collection by it's unique id.
+ *
+ * @see https://appwrite.io/docs/server/database?sdk=php#databaseDeleteCollection
+ * @return array
+ * @throws Exception
+ */
+function deleteCollection()
+{
+    global $dataBase, $collectionId;
+
+    return [
+        'call' => 'api.deleteCollection',
+        'response' => $dataBase->deleteCollection($collectionId)
+    ];
+}
+
+/**
  * Create a bucket
  * 
  * @see https://appwrite.io/docs/server/storage?sdk=php#storageCreateBucket
@@ -287,10 +305,12 @@ $methods = [
     'createCollection',
     'listCollections',
     'addDoc',
+    'deleteCollection',
     'createBucket',
     'createFile',
     'listFiles',
     'deleteFile',
+    'deleteBucket',
     'createUser',
     'listUsers',
     // 'getAccount' // works only with JWT
