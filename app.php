@@ -5,6 +5,7 @@ use Appwrite\Client;
 use Appwrite\Services\Database;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
+use Appwrite\Services\Account;
 
 $client = (new Client())
     ->setEndpoint(ENDPOINT)
@@ -13,6 +14,7 @@ $client = (new Client())
     ->setKey(API_KEY);
 
 $collectionId = "";
+$bucketId = "";
 
 $dataBase = new Database($client);
 $storage = new Storage($client);
@@ -44,27 +46,28 @@ function createCollection()
     global $collectionId, $dataBase;
 
     $response = $dataBase->createCollection(
-        'mvoies',
+        'movies',
         'Movies',
+        'collection',
         ['role:all'],
         ['role:all']
     );
 
     $collectionId = $response['$id'];
 
-    $response1 = database.createStringAttribute(
+    $response1 = $dataBase->createStringAttribute(
         $collectionId,
         'name',
         255,
         true,
-    )
-    $response2 = database.createIntegerAttribute(
+    );
+    $response2 = $dataBase->createIntegerAttribute(
         $collectionId,
         'release_year',
+        true,
         0,
         9999,
-        true
-    )
+    );
 
     return [
         'call' => 'api.createCollection',
@@ -101,7 +104,6 @@ function listCollections()
 function addDoc()
 {
     global $collectionId, $dataBase;
-
     $response = $dataBase->createDocument(
         $collectionId,
         'unique()',
@@ -120,6 +122,49 @@ function addDoc()
 }
 
 /**
+ * Delete collection
+ * Delete a collection by it's unique id.
+ *
+ * @see https://appwrite.io/docs/server/database?sdk=php#databaseDeleteCollection
+ * @return array
+ * @throws Exception
+ */
+function deleteCollection()
+{
+    global $dataBase, $collectionId;
+
+    return [
+        'call' => 'api.deleteCollection',
+        'response' => $dataBase->deleteCollection($collectionId)
+    ];
+}
+
+/**
+ * Create a bucket
+ * 
+ * @see https://appwrite.io/docs/server/storage?sdk=php#storageCreateBucket
+ * @return array
+ * @throws Exception
+ */
+function createBucket()
+{
+    global $storage, $bucketId;
+    $response = $storage->createBucket(
+        'unique()',
+        'test bucket',
+        'bucket',
+        ['role:all'],
+        ['role:all'],
+    );
+
+    $bucketId = $response['$id'];
+    return [
+        'call' => 'api.createBucket',
+        'response' => $response
+    ];
+}
+
+/**
  * Create a new file.
  * The user who creates the file will automatically be assigned to read and write
  * access unless he has passed custom values for read and write arguments.
@@ -130,14 +175,15 @@ function addDoc()
  */
 function createFile()
 {
-    global $storage;
+    global $storage, $bucketId, $fileId;
 
     $response = $storage->createFile(
+        $bucketId,
         'unique()',
-        curl_file_create(__DIR__ . '/test.txt'),
-        [],
-        []
+        __DIR__ . '/test.txt',
     );
+
+    $fileId = $response['$id'];
 
     return [
         'call' => 'api.uploadFile',
@@ -156,11 +202,11 @@ function createFile()
  */
 function listFiles()
 {
-    global $storage;
+    global $storage, $bucketId;
 
     return [
         'call' => 'api.listFiles',
-        'response' => $storage->listFiles()
+        'response' => $storage->listFiles($bucketId)
     ];
 }
 
@@ -174,11 +220,29 @@ function listFiles()
  */
 function deleteFile()
 {
-    global $storage;
+    global $storage, $bucketId, $fileId;
 
     return [
         'call' => 'api.deleteFile',
-        'response' => $storage->deleteFile('test.txt')
+        'response' => $storage->deleteFile($bucketId, $fileId)
+    ];
+}
+
+/**
+ * Delete a bucket by its unique ID.
+ * Only users with write permissions have access to delete this resource.
+ *
+ * @see https://appwrite.io/docs/server/storage?sdk=php#storageDeleteBucket
+ * @return array
+ * @throws Exception
+ */
+function deleteBucket()
+{
+    global $storage, $bucketId;
+
+    return [
+        'call' => 'api.deleteBucket',
+        'response' => $storage->deleteBucket($bucketId)
     ];
 }
 
@@ -237,27 +301,32 @@ function getAccount()
  * Execute all functions, collect their return values
  * and print everything at the end.
  */
-try {
-    $ret = [];
-    $methods = [
-        'createCollection',
-        'listCollections',
-        'addDoc',
-        'createFile',
-        'listFiles',
-        'deleteFile',
-        'createUser',
-        'listUsers',
-        // 'getAccount' // works only with JWT
-    ];
+$ret = [];
+$methods = [
+    'createCollection',
+    'listCollections',
+    'addDoc',
+    'deleteCollection',
+    'createBucket',
+    'createFile',
+    'listFiles',
+    'deleteFile',
+    'deleteBucket',
+    'createUser',
+    'listUsers',
+    // 'getAccount' // works only with JWT
+];
 
-    foreach ($methods as $method) {
+foreach ($methods as $method) {
+    try {
         if (function_exists($method)) {
             $ret[] = $method();
         }
+    } catch (Exception $e) {
+        print_r($e->getMessage());
+        print_r($e->getTraceAsString());
+        print_r("");
     }
-
-    appwriteDebug($ret);
-} catch (Exception $e) {
-    die($e->getMessage());
 }
+
+appwriteDebug($ret);
