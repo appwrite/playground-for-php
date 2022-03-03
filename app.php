@@ -14,6 +14,7 @@ $client = (new Client())
     ->setKey(API_KEY);
 
 $collectionId = "";
+$bucketId = "";
 
 $dataBase = new Database($client);
 $storage = new Storage($client);
@@ -323,6 +324,8 @@ foreach ($methods as $method) {
         }
     } catch (Exception $e) {
         print_r($e->getMessage());
+        print_r($e->getTraceAsString());
+        print_r("");
     }
 }
 
