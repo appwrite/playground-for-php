@@ -2,10 +2,11 @@
 require __DIR__ . '/global.inc.php';
 
 use Appwrite\Client;
-use Appwrite\Services\Database;
+use Appwrite\Services\Databases;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
 use Appwrite\Services\Account;
+use Appwrite\InputFile;
 
 $client = (new Client())
     ->setEndpoint(ENDPOINT)
@@ -14,16 +15,17 @@ $client = (new Client())
     ->setKey(API_KEY);
 
 $collectionId = "";
+$databaseId = "default";
 $bucketId = "";
 
-$dataBase = new Database($client);
+$databases = new Databases($client, $databaseId);
 $storage = new Storage($client);
 $users = new Users($client);
 $account = new Account($client);
 
 /**
  * Covered API methods
- *
+ * - createDatabase
  * - createCollection
  * - listCollection
  * - addDoc
@@ -35,17 +37,33 @@ $account = new Account($client);
  * - getAccount
  */
 
-/**
+  /**
+ * Create a new Database.
+ *
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreate
+ * @throws Exception
+ */
+function createDatabase()
+{
+    global $databases;
+    $response = $databases->create('Default');
+    return [
+        'call' => 'api.createDatabase',
+        'response' => $response
+    ];
+}
+
+ /**
  * Create a new Collection.
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#databaseCreateCollection
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateCollection
  * @throws Exception
  */
 function createCollection()
 {
-    global $collectionId, $dataBase;
+    global $collectionId, $databases;
 
-    $response = $dataBase->createCollection(
+    $response = $databases->createCollection(
         'movies',
         'Movies',
         'collection',
@@ -55,13 +73,13 @@ function createCollection()
 
     $collectionId = $response['$id'];
 
-    $response1 = $dataBase->createStringAttribute(
+    $response1 = $databases->createStringAttribute(
         $collectionId,
         'name',
         255,
         true,
     );
-    $response2 = $dataBase->createIntegerAttribute(
+    $response2 = $databases->createIntegerAttribute(
         $collectionId,
         'release_year',
         true,
@@ -79,17 +97,17 @@ function createCollection()
  * Get a list of all the user collections.
  * On admin mode, this endpoint will return a list of all of the project collections.
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#databaseListCollections
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databaseListCollections
  * @return array
  * @throws Exception
  */
 function listCollections()
 {
-    global $dataBase;
+    global $databases;
 
     return [
         'call' => 'api.listCollections',
-        'response' => $dataBase->listCollections()
+        'response' => $databases->listCollections()
     ];
 }
 
@@ -97,14 +115,14 @@ function listCollections()
  * Create a new Document.
  * Before using this route, you should create a new collection resource
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#databaseCreateDocument
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databaseCreateDocument
  * @return array
  * @throws Exception
  */
 function addDoc()
 {
-    global $collectionId, $dataBase;
-    $response = $dataBase->createDocument(
+    global $collectionId, $databases;
+    $response = $databases->createDocument(
         $collectionId,
         'unique()',
         [
@@ -125,17 +143,17 @@ function addDoc()
  * Delete collection
  * Delete a collection by it's unique id.
  *
- * @see https://appwrite.io/docs/server/database?sdk=php#databaseDeleteCollection
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databaseDeleteCollection
  * @return array
  * @throws Exception
  */
 function deleteCollection()
 {
-    global $dataBase, $collectionId;
+    global $databases, $collectionId;
 
     return [
         'call' => 'api.deleteCollection',
-        'response' => $dataBase->deleteCollection($collectionId)
+        'response' => $databases->deleteCollection($collectionId)
     ];
 }
 
@@ -180,13 +198,13 @@ function createFile()
     $response = $storage->createFile(
         $bucketId,
         'unique()',
-        __DIR__ . '/test.txt',
+        InputFile::withPath(__DIR__ . '/test.txt'),
     );
 
     $fileId = $response['$id'];
 
     return [
-        'call' => 'api.uploadFile',
+        'call' => 'api.createFile',
         'response' => $response
     ];
 }
@@ -303,6 +321,7 @@ function getAccount()
  */
 $ret = [];
 $methods = [
+    'createDatabase',
     'createCollection',
     'listCollections',
     'addDoc',
