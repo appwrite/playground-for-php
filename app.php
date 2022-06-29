@@ -26,7 +26,9 @@ $account = new Account($client);
 /**
  * Covered API methods
  * - createDatabase
+ * - deleteDatabase
  * - createCollection
+ * - deleteCollection
  * - listCollection
  * - addDoc
  * - uploadFile
@@ -37,7 +39,7 @@ $account = new Account($client);
  * - getAccount
  */
 
-  /**
+/**
  * Create a new Database.
  *
  * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreate
@@ -97,7 +99,7 @@ function createCollection()
  * Get a list of all the user collections.
  * On admin mode, this endpoint will return a list of all of the project collections.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databaseListCollections
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesListCollections
  * @return array
  * @throws Exception
  */
@@ -115,7 +117,7 @@ function listCollections()
  * Create a new Document.
  * Before using this route, you should create a new collection resource
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databaseCreateDocument
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateDocument
  * @return array
  * @throws Exception
  */
@@ -143,7 +145,7 @@ function addDoc()
  * Delete collection
  * Delete a collection by it's unique id.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databaseDeleteCollection
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesDeleteCollection
  * @return array
  * @throws Exception
  */
@@ -154,6 +156,24 @@ function deleteCollection()
     return [
         'call' => 'api.deleteCollection',
         'response' => $databases->deleteCollection($collectionId)
+    ];
+}
+
+/**
+ * Delete Database
+ * Delete a database by it's unique id.
+ *
+ * @see https://appwrite.io/docs/server/databases?sdk=php#databasesDelete
+ * @return array
+ * @throws Exception
+ */
+function deleteDatabase()
+{
+    global $databases;
+
+    return [
+        'call' => 'api.deleteDatabase',
+        'response' => $databases->delete()
     ];
 }
 
@@ -326,6 +346,7 @@ $methods = [
     'listCollections',
     'addDoc',
     'deleteCollection',
+    'deleteDatabase',
     'createBucket',
     'createFile',
     'listFiles',
