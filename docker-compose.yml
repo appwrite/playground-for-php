@@ -1,0 +1,9 @@
+version: '3.9'
+
+services:
+  playground-for-php:
+    build: .
+    volumes:
+      - "./:/app"
+    working_dir: /app
+    command: "php playground.php"
