@@ -5,7 +5,7 @@ COPY composer.lock composer.lock
 
 RUN composer install --no-dev --no-interaction --no-progress --no-scripts --optimize-autoloader
 
-FROM php:8.0.15-alpine3.15
+FROM php:8.1.11-alpine3.16
 
 COPY --from=composer /app/vendor /app/vendor
 COPY global.inc.php /app/global.inc.php

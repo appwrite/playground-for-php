@@ -3,14 +3,14 @@ require __DIR__ . '/global.inc.php';
 
 use Appwrite\Client;
 use Appwrite\ID;
+use Appwrite\InputFile;
 use Appwrite\Permission;
 use Appwrite\Role;
+use Appwrite\Services\Account;
 use Appwrite\Services\Databases;
 use Appwrite\Services\Functions;
 use Appwrite\Services\Storage;
 use Appwrite\Services\Users;
-use Appwrite\Services\Account;
-use Appwrite\InputFile;
 
 $client = (new Client())
     ->setEndpoint(ENDPOINT)
@@ -63,16 +63,16 @@ function createDatabase(): array
 
     return [
         'call' => 'api.createDatabase',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
- /**
- * Create a new Collection.
- *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateCollection
- * @throws Exception
- */
+/**
+* Create a new Collection.
+*
+* @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateCollection
+* @throws Exception
+*/
 function createCollection(): array
 {
     global $databases, $databaseId, $collectionId;
@@ -109,7 +109,7 @@ function createCollection(): array
 
     return [
         'call' => 'api.createCollection',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -129,7 +129,7 @@ function listCollections(): array
 
     return [
         'call' => 'api.listCollections',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -161,7 +161,7 @@ function addDoc(): array
 
     return [
         'call' => 'api.addDoc',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -181,7 +181,7 @@ function deleteCollection(): array
 
     return [
         'call' => 'api.deleteCollection',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -201,13 +201,13 @@ function deleteDatabase(): array
 
     return [
         'call' => 'api.deleteDatabase',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
 /**
  * Create a bucket
- * 
+ *
  * @see https://appwrite.io/docs/server/storage?sdk=php#storageCreateBucket
  * @return array
  * @throws Exception
@@ -232,7 +232,7 @@ function createBucket(): array
 
     return [
         'call' => 'api.createBucket',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -254,7 +254,7 @@ function createFile(): array
         fileId: ID::unique(),
         file: InputFile::withPath(__DIR__ . '/test.txt'),
         permissions: [
-            Permission::read(Role::any())
+            Permission::read(Role::any()),
         ]
     );
 
@@ -262,7 +262,7 @@ function createFile(): array
 
     return [
         'call' => 'api.createFile',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -283,7 +283,7 @@ function listFiles(): array
 
     return [
         'call' => 'api.listFiles',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -303,7 +303,7 @@ function deleteFile(): array
 
     return [
         'call' => 'api.deleteFile',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -323,7 +323,7 @@ function deleteBucket(): array
 
     return [
         'call' => 'api.deleteBucket',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -338,7 +338,7 @@ function createUser(): array
 {
     global $users;
 
-    $suffix = time();
+    $suffix = \time();
 
     $response = $users->create(
         userId: ID::unique(),
@@ -349,7 +349,7 @@ function createUser(): array
 
     return [
         'call' => 'api.createUser',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -367,7 +367,7 @@ function listUsers(): array
 
     return [
         'call' => 'api.listUsers',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -385,7 +385,7 @@ function getAccount(): array
 
     return [
         'call' => 'api.getAccount',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -410,7 +410,7 @@ function createFunction(): array
 
     return [
         'call' => 'api.createFunction',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -428,7 +428,7 @@ function listFunctions(): array
 
     return [
         'call' => 'api.listFunctions',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -446,7 +446,7 @@ function deleteFunction(): array
 
     return [
         'call' => 'api.deleteFunction',
-        'response' => $response
+        'response' => $response,
     ];
 }
 
@@ -477,13 +477,13 @@ $methods = [
 
 foreach ($methods as $method) {
     try {
-        if (function_exists($method)) {
+        if (\function_exists($method)) {
             $ret[] = $method();
         }
     } catch (Exception $e) {
-        print_r($e->getMessage());
-        print_r($e->getTraceAsString());
-        print_r("");
+        \print_r($e->getMessage());
+        \print_r($e->getTraceAsString());
+        \print_r("");
     }
 }
 
