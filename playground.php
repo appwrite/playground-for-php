@@ -2,6 +2,8 @@
 require __DIR__ . '/global.inc.php';
 
 use Appwrite\Client;
+use Appwrite\Enums\ExecutionMethod;
+use Appwrite\Enums\Runtime;
 use Appwrite\ID;
 use Appwrite\InputFile;
 use Appwrite\Permission;
@@ -402,8 +404,8 @@ function createFunction(): array
     $response = $functions->create(
         functionId: ID::unique(),
         name: 'Test Function',
+        runtime: Runtime::PHP80(),
         execute: [Role::any()],
-        runtime: 'php-8.0',
     );
 
     $functionId = $response['$id'];
@@ -411,6 +413,88 @@ function createFunction(): array
     return [
         'call' => 'api.createFunction',
         'response' => $response,
+    ];
+}
+
+/**
+ * Create a deployment
+ * 
+ * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateDeployment
+ * @throws Exception
+ */
+function createDeployment(): array
+{
+    global $functions, $functionId;
+
+    $response = $functions->createDeployment(
+        functionId: $functionId,
+        code: InputFile::withPath(__DIR__ . '/resources/code.tar.gz'),
+        activate: true,
+        entrypoint: "src/index.php",
+        commands: "composer install"
+    );
+
+    // wait for deployment to be ready
+    sleep(5);
+
+    return [
+        'call' => 'api.createDeployment',
+        'response' => $response,
+    ];
+}
+
+/**
+ * Create sync execution
+ * 
+ * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateExecution
+ * @throws Exception
+ */
+function createSyncExecution(): array
+{
+    global $functions, $functionId;
+
+    $response = $functions->createExecution(
+        functionId: $functionId,
+        body: "",
+        async: false,
+        xpath: "/",
+        method: ExecutionMethod::GET(),
+        headers: [],
+    );
+
+    return [
+        'call' => 'api.createExecution',
+        'response' => $response,
+    ];
+}
+
+/**
+ * Create async execution
+ * 
+ * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateExecution
+ * @throws Exception
+ */
+function createAsyncExecution(): array
+{
+    global $functions, $functionId;
+
+    $response = $functions->createExecution(
+        functionId: $functionId,
+        body: "",
+        async: true,
+        xpath: "/",
+        method: ExecutionMethod::GET(),
+        headers: [],
+    );
+
+    // wait for 2 seconds to ensure execution is finished
+    sleep(2);
+
+    $asyncResponse = $functions->getExecution($functionId, $response['$id']);
+
+    return [
+        'call' => 'api.createExecution',
+        'response' => $asyncResponse,
     ];
 }
 
@@ -470,6 +554,9 @@ $methods = [
     'createUser',
     'listUsers',
     'createFunction',
+    'createDeployment',
+    'createSyncExecution',
+    'createAsyncExecution',
     'listFunctions',
     'deleteFunction',
     // 'getAccount' // works only with JWT
