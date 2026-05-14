@@ -2,15 +2,15 @@
 require_once __DIR__ . '/vendor/autoload.php';
 
 if (!defined('ENDPOINT')) {
-    define('ENDPOINT', 'https://localhost/v1');
+    define('ENDPOINT', 'https://demo.appwrite.io/v1');
 }
 
 if (!defined('PROJECT_ID')) {
-    define('PROJECT_ID', '<Your Project ID />');
+    define('PROJECT_ID', 'playground');
 }
 
 if (!defined('API_KEY')) {
-    define('API_KEY', '<Your Project Secret Api key />');
+    define('API_KEY', 'fff3b3caa94f9b9ab318c1bbf7038752f3a0780ad689b76e94ddb6c6da78ce3a0e25a8b9d31fe54a57a86ce24cd38ad91fbf9ffca70d54f364e65f9e0ae830319a46f01c81bb82371ca3da5409fd8224a61fc76a5ed3b5a476f56c2eaf85f9f2e627a4c1534bcaf5225b702d5150013c795acd888b46edca2878be40f4820cbf');
 }
 
 // Helper functions

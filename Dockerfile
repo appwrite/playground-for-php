@@ -14,3 +14,4 @@ COPY test.txt /app/test.txt
 
 WORKDIR /app
 CMD php playground.php
+`
