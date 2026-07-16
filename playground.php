@@ -61,7 +61,7 @@ function createDatabase(): array
         name: "Test Database"
     );
 
-    $databaseId = $response['$id'];
+    $databaseId = $response->id;
 
     return [
         'call' => 'api.createDatabase',
@@ -91,7 +91,7 @@ function createCollection(): array
         ]
     );
 
-    $collectionId = $response['$id'];
+    $collectionId = $response->id;
 
     $response1 = $databases->createStringAttribute(
         $databaseId,
@@ -230,7 +230,7 @@ function createBucket(): array
         fileSecurity: true,
     );
 
-    $bucketId = $response['$id'];
+    $bucketId = $response->id;
 
     return [
         'call' => 'api.createBucket',
@@ -260,7 +260,7 @@ function createFile(): array
         ]
     );
 
-    $fileId = $response['$id'];
+    $fileId = $response->id;
 
     return [
         'call' => 'api.createFile',
@@ -408,7 +408,7 @@ function createFunction(): array
         execute: [Role::any()],
     );
 
-    $functionId = $response['$id'];
+    $functionId = $response->id;
 
     return [
         'call' => 'api.createFunction',
@@ -490,7 +490,7 @@ function createAsyncExecution(): array
     // wait for 2 seconds to ensure execution is finished
     sleep(2);
 
-    $asyncResponse = $functions->getExecution($functionId, $response['$id']);
+    $asyncResponse = $functions->getExecution($functionId, $response->id);
 
     return [
         'call' => 'api.createExecution',
