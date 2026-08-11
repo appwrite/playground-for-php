@@ -11,7 +11,7 @@ Appwrite playground is a simple way to explore the Appwrite API & Appwrite PHP S
 This playground doesn't include any PHP best practices but rather intended to show some of the most simple examples and use cases of using the Appwrite API in your PHP application and server.
 
 ## System Requirements
-* A system with PHP installed.
+* A system with PHP 8.2 or newer installed.
 * You have readily available Appwrite running instance (localhost in most cases).
 * Create a project in Appwrite instance using console.
 * Generate a secret key in the Appwrite instance using console.
@@ -25,13 +25,16 @@ This playground doesn't include any PHP best practices but rather intended to sh
 6. You will see the JSON response in the console.
 
 ### API Covered in Playground.
-* Create Collection
-* List Collection
-* Add Document
-* List Documents
+* Create Database
+* Create Table (with all of its columns defined inline)
+* List Tables
+* Add Row
+* List Rows
 * Upload File
+* List Files
 * Create User
 * List User
+* Create Function, Deployment and Execution
 
 ## Contributing
 
