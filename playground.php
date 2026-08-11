@@ -9,9 +9,9 @@ use Appwrite\InputFile;
 use Appwrite\Permission;
 use Appwrite\Role;
 use Appwrite\Services\Account;
-use Appwrite\Services\Databases;
 use Appwrite\Services\Functions;
 use Appwrite\Services\Storage;
+use Appwrite\Services\TablesDB;
 use Appwrite\Services\Users;
 
 $client = (new Client())
@@ -20,11 +20,13 @@ $client = (new Client())
     // ->setJWT('jwt') // Use this to authenticate with JWT generated from client
     ->setKey(API_KEY);
 
-$collectionId = "";
+$tableId = "";
 $databaseId = "";
 $bucketId = "";
+$fileId = "";
+$functionId = "";
 
-$databases = new Databases($client);
+$tablesDB = new TablesDB($client);
 $storage = new Storage($client);
 $functions = new Functions($client);
 $users = new Users($client);
@@ -34,10 +36,11 @@ $account = new Account($client);
  * Covered API methods
  * - createDatabase
  * - deleteDatabase
- * - createCollection
- * - deleteCollection
- * - listCollection
- * - addDoc
+ * - createTable
+ * - deleteTable
+ * - listTables
+ * - createRow
+ * - listRows
  * - uploadFile
  * - listFiles
  * - deleteFile
@@ -49,110 +52,146 @@ $account = new Account($client);
 /**
  * Create a new Database.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreate
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#create
  * @throws Exception
  */
 function createDatabase(): array
 {
-    global $databases, $databaseId;
+    global $tablesDB, $databaseId;
 
-    $response = $databases->create(
+    $response = $tablesDB->create(
         databaseId: ID::unique(),
         name: "Test Database"
     );
 
-    $databaseId = $response['$id'];
+    $databaseId = $response->id;
 
     return [
         'call' => 'api.createDatabase',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
-* Create a new Collection.
-*
-* @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateCollection
-* @throws Exception
-*/
-function createCollection(): array
+ * Create a new Table, with all of its columns defined inline.
+ *
+ * Every column type the dedicated `create*Column` endpoints expose can also be
+ * declared in the `columns` array, so a whole table is one request:
+ *
+ * - `string` and `varchar` take a `size`
+ * - `text`, `mediumtext` and `longtext` are fixed width, so they take no `size`
+ * - `email`, `url`, `ip` and `enum` are shorthands for a string of that format
+ * - a `string` with an explicit `format` falls back to the format's size
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#createTable
+ * @throws Exception
+ */
+function createTable(): array
 {
-    global $databases, $databaseId, $collectionId;
+    global $tablesDB, $databaseId, $tableId;
 
-    $response = $databases->createCollection(
+    $response = $tablesDB->createTable(
         databaseId: $databaseId,
-        collectionId: ID::unique(),
-        name: 'collection',
+        tableId: ID::unique(),
+        name: 'movies',
         permissions: [
             Permission::read(Role::any()),
             Permission::create(Role::users()),
             Permission::update(Role::users()),
             Permission::delete(Role::users()),
+        ],
+        columns: [
+            ['key' => 'name', 'type' => 'string', 'size' => 255, 'required' => true],
+            ['key' => 'slug', 'type' => 'varchar', 'size' => 64],
+            ['key' => 'synopsis', 'type' => 'text'],
+            ['key' => 'release_year', 'type' => 'integer', 'required' => true, 'min' => 0, 'max' => 9999],
+            ['key' => 'contact', 'type' => 'email'],
+            ['key' => 'website', 'type' => 'string', 'format' => 'url'],
+            ['key' => 'status', 'type' => 'enum', 'elements' => ['draft', 'published'], 'default' => 'draft'],
         ]
     );
 
-    $collectionId = $response['$id'];
+    $tableId = $response->id;
 
-    $response1 = $databases->createStringAttribute(
-        $databaseId,
-        $collectionId,
-        key: 'name',
-        size: 255,
-        required: true,
-    );
-    $response2 = $databases->createIntegerAttribute(
-        $databaseId,
-        $collectionId,
-        key: 'release_year',
-        required: true,
-        min: 0,
-        max: 9999,
-    );
+    // Columns are created in the background, wait for them before writing rows.
+    awaitColumns();
 
     return [
-        'call' => 'api.createCollection',
-        'response' => $response,
+        'call' => 'api.createTable',
+        'response' => $response->toArray(),
     ];
 }
 
 /**
- * Get a list of all the user collections.
- * On admin mode, this endpoint will return a list of all of the project collections.
+ * Poll the table's columns until none of them is still processing.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesListCollections
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#listColumns
+ * @throws Exception
+ */
+function awaitColumns(int $attempts = 10): void
+{
+    global $tablesDB, $databaseId, $tableId;
+
+    for ($attempt = 0; $attempt < $attempts; $attempt++) {
+        $columns = $tablesDB->listColumns($databaseId, $tableId)->columns;
+
+        $pending = \array_filter(
+            $columns,
+            static fn (array $column): bool => ($column['status'] ?? '') !== 'available'
+        );
+
+        if (empty($pending)) {
+            return;
+        }
+
+        \sleep(1);
+    }
+}
+
+/**
+ * Get a list of all the user tables.
+ * On admin mode, this endpoint will return a list of all of the project tables.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#listTables
  * @return array
  * @throws Exception
  */
-function listCollections(): array
+function listTables(): array
 {
-    global $databases, $databaseId;
+    global $tablesDB, $databaseId;
 
-    $response = $databases->listCollections($databaseId);
+    $response = $tablesDB->listTables($databaseId);
 
     return [
-        'call' => 'api.listCollections',
-        'response' => $response,
+        'call' => 'api.listTables',
+        'response' => $response->toArray(),
     ];
 }
 
 /**
- * Create a new Document.
- * Before using this route, you should create a new collection resource
+ * Create a new Row.
+ * Before using this route, you should create a new table resource
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesCreateDocument
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#createRow
  * @return array
  * @throws Exception
  */
-function addDoc(): array
+function createRow(): array
 {
-    global $databases, $databaseId, $collectionId;
-    $response = $databases->createDocument(
+    global $tablesDB, $databaseId, $tableId;
+
+    $response = $tablesDB->createRow(
         $databaseId,
-        $collectionId,
-        documentId: ID::unique(),
+        $tableId,
+        rowId: ID::unique(),
         data: [
             'name' => 'Spider Man',
+            'slug' => 'spider-man',
+            'synopsis' => 'A teenager bitten by a radioactive spider fights crime in New York.',
             'release_year' => 1920,
+            'contact' => 'team@appwrite.io',
+            'website' => 'https://appwrite.io',
+            'status' => 'published',
         ],
         permissions: [
             Permission::read(Role::any()),
@@ -162,27 +201,46 @@ function addDoc(): array
     );
 
     return [
-        'call' => 'api.addDoc',
-        'response' => $response,
+        'call' => 'api.createRow',
+        'response' => $response->toArray(),
     ];
 }
 
 /**
- * Delete collection
- * Delete a collection by it's unique id.
+ * Get a list of all the rows of a table.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesDeleteCollection
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#listRows
  * @return array
  * @throws Exception
  */
-function deleteCollection(): array
+function listRows(): array
 {
-    global $databases, $databaseId, $collectionId;
+    global $tablesDB, $databaseId, $tableId;
 
-    $response = $databases->deleteCollection($databaseId, $collectionId);
+    $response = $tablesDB->listRows($databaseId, $tableId);
 
     return [
-        'call' => 'api.deleteCollection',
+        'call' => 'api.listRows',
+        'response' => $response->toArray(),
+    ];
+}
+
+/**
+ * Delete table
+ * Delete a table by it's unique id.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#deleteTable
+ * @return array
+ * @throws Exception
+ */
+function deleteTable(): array
+{
+    global $tablesDB, $databaseId, $tableId;
+
+    $response = $tablesDB->deleteTable($databaseId, $tableId);
+
+    return [
+        'call' => 'api.deleteTable',
         'response' => $response,
     ];
 }
@@ -191,15 +249,15 @@ function deleteCollection(): array
  * Delete Database
  * Delete a database by it's unique id.
  *
- * @see https://appwrite.io/docs/server/databases?sdk=php#databasesDelete
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesDB#delete
  * @return array
  * @throws Exception
  */
 function deleteDatabase(): array
 {
-    global $databases, $databaseId;
+    global $tablesDB, $databaseId;
 
-    $response = $databases->delete($databaseId);
+    $response = $tablesDB->delete($databaseId);
 
     return [
         'call' => 'api.deleteDatabase',
@@ -210,7 +268,7 @@ function deleteDatabase(): array
 /**
  * Create a bucket
  *
- * @see https://appwrite.io/docs/server/storage?sdk=php#storageCreateBucket
+ * @see https://appwrite.io/docs/references/cloud/server-php/storage#createBucket
  * @return array
  * @throws Exception
  */
@@ -230,11 +288,11 @@ function createBucket(): array
         fileSecurity: true,
     );
 
-    $bucketId = $response['$id'];
+    $bucketId = $response->id;
 
     return [
         'call' => 'api.createBucket',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
@@ -243,7 +301,7 @@ function createBucket(): array
  * The user who creates the file will automatically be assigned to read and write
  * access unless he has passed custom values for read and write arguments.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#storageCreateFile
+ * @see https://appwrite.io/docs/references/cloud/server-php/storage#createFile
  * @return array
  * @throws Exception
  */
@@ -260,11 +318,11 @@ function createFile(): array
         ]
     );
 
-    $fileId = $response['$id'];
+    $fileId = $response->id;
 
     return [
         'call' => 'api.createFile',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
@@ -273,7 +331,7 @@ function createFile(): array
  * You can use the query params to filter your results. On admin mode,
  * this endpoint will return a list of all of the project files.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#storageListFiles
+ * @see https://appwrite.io/docs/references/cloud/server-php/storage#listFiles
  * @return array
  * @throws Exception
  */
@@ -285,7 +343,7 @@ function listFiles(): array
 
     return [
         'call' => 'api.listFiles',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
@@ -293,7 +351,7 @@ function listFiles(): array
  * Delete a file by its unique ID.
  * Only users with write permissions have access to delete this resource.
  *
- * @see https://appwrite.io/docs/client/storage?sdk=php#storageDeleteFile
+ * @see https://appwrite.io/docs/references/cloud/server-php/storage#deleteFile
  * @return array
  * @throws Exception
  */
@@ -313,7 +371,7 @@ function deleteFile(): array
  * Delete a bucket by its unique ID.
  * Only users with write permissions have access to delete this resource.
  *
- * @see https://appwrite.io/docs/server/storage?sdk=php#storageDeleteBucket
+ * @see https://appwrite.io/docs/references/cloud/server-php/storage#deleteBucket
  * @return array
  * @throws Exception
  */
@@ -332,7 +390,7 @@ function deleteBucket(): array
 /**
  * Create a new user.
  *
- * @see https://appwrite.io/docs/server/users?sdk=php#usersCreate
+ * @see https://appwrite.io/docs/references/cloud/server-php/users#create
  * @return array
  * @throws Exception
  */
@@ -351,14 +409,14 @@ function createUser(): array
 
     return [
         'call' => 'api.createUser',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Get a list of all the project users.
  *
- * @see https://appwrite.io/docs/server/users?sdk=php#usersList
+ * @see https://appwrite.io/docs/references/cloud/server-php/users#list
  * @throws Exception
  */
 function listUsers(): array
@@ -369,14 +427,14 @@ function listUsers(): array
 
     return [
         'call' => 'api.listUsers',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Get an account of authenticated user. Works only with JWT
  *
- * @see https://appwrite.io/docs/server/account?sdk=php#accountGet
+ * @see https://appwrite.io/docs/references/cloud/server-php/account#get
  * @throws Exception
  */
 function getAccount(): array
@@ -387,14 +445,14 @@ function getAccount(): array
 
     return [
         'call' => 'api.getAccount',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Create a function
  *
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreate
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#create
  * @throws Exception
  */
 function createFunction(): array
@@ -408,18 +466,18 @@ function createFunction(): array
         execute: [Role::any()],
     );
 
-    $functionId = $response['$id'];
+    $functionId = $response->id;
 
     return [
         'call' => 'api.createFunction',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Create a deployment
- * 
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateDeployment
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#createDeployment
  * @throws Exception
  */
 function createDeployment(): array
@@ -439,14 +497,14 @@ function createDeployment(): array
 
     return [
         'call' => 'api.createDeployment',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Create sync execution
- * 
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateExecution
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#createExecution
  * @throws Exception
  */
 function createSyncExecution(): array
@@ -464,14 +522,14 @@ function createSyncExecution(): array
 
     return [
         'call' => 'api.createExecution',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Create async execution
- * 
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsCreateExecution
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#createExecution
  * @throws Exception
  */
 function createAsyncExecution(): array
@@ -490,18 +548,18 @@ function createAsyncExecution(): array
     // wait for 2 seconds to ensure execution is finished
     sleep(2);
 
-    $asyncResponse = $functions->getExecution($functionId, $response['$id']);
+    $asyncResponse = $functions->getExecution($functionId, $response->id);
 
     return [
         'call' => 'api.createExecution',
-        'response' => $asyncResponse,
+        'response' => $asyncResponse->toArray(),
     ];
 }
 
 /**
  * List functions
  *
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsList
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#list
  * @throws Exception
  */
 function listFunctions(): array
@@ -512,14 +570,14 @@ function listFunctions(): array
 
     return [
         'call' => 'api.listFunctions',
-        'response' => $response,
+        'response' => $response->toArray(),
     ];
 }
 
 /**
  * Delete a function
  *
- * @see https://appwrite.io/docs/server/functions?sdk=php#functionsDelete
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#delete
  * @throws Exception
  */
 function deleteFunction(): array
@@ -541,10 +599,11 @@ function deleteFunction(): array
 $ret = [];
 $methods = [
     'createDatabase',
-    'createCollection',
-    'listCollections',
-    'addDoc',
-    'deleteCollection',
+    'createTable',
+    'listTables',
+    'createRow',
+    'listRows',
+    'deleteTable',
     'deleteDatabase',
     'createBucket',
     'createFile',
