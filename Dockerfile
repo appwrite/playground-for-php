@@ -1,16 +1,17 @@
-FROM composer AS composer
+FROM php:8.5-cli
 
-COPY composer.json composer.json
-COPY composer.lock composer.lock
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-RUN composer install --no-dev --no-interaction --no-progress --no-scripts --optimize-autoloader
-
-FROM php:8.1.11-alpine3.16
-
-COPY --from=composer /app/vendor /app/vendor
-COPY global.inc.php /app/global.inc.php
-COPY playground.php /app/playground.php
-COPY test.txt /app/test.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-CMD php playground.php
+
+COPY composer.json ./
+RUN composer install --no-dev --no-interaction --no-progress --no-scripts --optimize-autoloader
+
+COPY global.inc.php playground.php test.txt ./
+COPY resources ./resources
+
+CMD ["php", "playground.php"]
