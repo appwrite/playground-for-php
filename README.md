@@ -11,7 +11,7 @@ Appwrite playground is a simple way to explore the Appwrite API & Appwrite PHP S
 This playground doesn't include any PHP best practices but rather intended to show some of the most simple examples and use cases of using the Appwrite API in your PHP application and server.
 
 ## System Requirements
-* A system with PHP installed.
+* A system with PHP 8.5 or newer installed (required by `appwrite/appwrite` 32.x).
 * You have readily available Appwrite running instance (localhost in most cases).
 * Create a project in Appwrite instance using console.
 * Generate a secret key in the Appwrite instance using console.
@@ -25,13 +25,59 @@ This playground doesn't include any PHP best practices but rather intended to sh
 6. You will see the JSON response in the console.
 
 ### API Covered in Playground.
-* Create Collection
-* List Collection
-* Add Document
-* List Documents
+* Create Table
+* List Tables
+* Add Row
 * Upload File
+* List Files
 * Create User
 * List User
+* Request Password Recovery
+* Log a User In From a Token Secret
+* Create Function, Deployment and Executions
+
+Collections and documents were renamed to tables and rows in Appwrite 1.8. The
+playground uses the `TablesDB` service; the older `Databases` service still
+exists in the SDK, but every one of its methods is deprecated.
+
+### Abuse limits
+
+The account and recovery routes are abuse limited. Reaching a limit answers
+`429`, which the SDK raises as an `AppwriteException` whose code is `429` and
+whose type is `general_rate_limit_exceeded`. Since
+[appwrite/appwrite#15280](https://github.com/appwrite/appwrite/pull/15280) the
+count is kept per project: the attempts your project is allowed for a user or an
+address are its own, and another project cannot spend them for you.
+`createRecovery()` in `playground.php` shows how to handle the refusal.
+
+An API key used to be waived from those limits. Since
+[appwrite/appwrite#15470](https://github.com/appwrite/appwrite/pull/15470) the
+routes that confirm a secret — `updateRecovery()`, `updateRecoveryOTP()`,
+`createSession()`, `updatePhoneSession()`, `updateMagicURLSession()` and
+`updateMFAChallenge()` — count every caller's guesses, a key holder included. A
+key is trusted with throughput, not with the inbox or handset the secret was
+sent to.
+
+So a server relaying logins or recoveries for its users has to treat the
+confirmation as something it gets a handful of tries at per user:
+
+* `401` means the secret is wrong or has expired — ask the user for a new one.
+* `429` means that user's attempts are spent — wait, do not guess again.
+  Once a limit is spent the route refuses the correct secret too, so retrying a
+  mistyped code locks the user out of signing in for the rest of the window.
+
+`createSessionFromToken()` in `playground.php` shows the shape of that handling.
+
+## Tests
+
+`composer test` runs the playground end to end against a stub Appwrite
+(`tests/stub-server.php`) served by PHP's built-in web server, checking that
+every call succeeded and hit the endpoint it was supposed to
+(`tests/smoke.php`), and then drives the abuse-limited confirmation routes with
+an API key to check that wrong guesses are counted for it, that the count is per
+user, and that the `429` reaches the caller in a shape it can act on
+(`tests/code-guesses.php`). No Appwrite instance and no network access are
+needed.
 
 ## Contributing
 
