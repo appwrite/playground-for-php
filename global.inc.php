@@ -1,16 +1,20 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
 
+// Every constant can also be provided through the environment, which keeps the
+// credentials out of the working tree and lets the playground be pointed at
+// another instance without editing this file.
+
 if (!\defined('ENDPOINT')) {
-    \define('ENDPOINT', 'https://localhost/v1');
+    \define('ENDPOINT', \getenv('APPWRITE_ENDPOINT') ?: 'https://localhost/v1');
 }
 
 if (!\defined('PROJECT_ID')) {
-    \define('PROJECT_ID', '<Your Project ID />');
+    \define('PROJECT_ID', \getenv('APPWRITE_PROJECT_ID') ?: '<Your Project ID />');
 }
 
 if (!\defined('API_KEY')) {
-    \define('API_KEY', '<Your Project Secret Api key />');
+    \define('API_KEY', \getenv('APPWRITE_API_KEY') ?: '<Your Project Secret Api key />');
 }
 
 // Helper functions

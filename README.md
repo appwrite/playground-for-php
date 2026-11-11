@@ -11,7 +11,8 @@ Appwrite playground is a simple way to explore the Appwrite API & Appwrite PHP S
 This playground doesn't include any PHP best practices but rather intended to show some of the most simple examples and use cases of using the Appwrite API in your PHP application and server.
 
 ## System Requirements
-* A system with PHP installed.
+* PHP 8.5 or newer, with the `curl` and `json` extensions. The Appwrite PHP SDK
+  (`appwrite/appwrite` 32.x) requires PHP 8.5.
 * You have readily available Appwrite running instance (localhost in most cases).
 * Create a project in Appwrite instance using console.
 * Generate a secret key in the Appwrite instance using console.
@@ -19,19 +20,35 @@ This playground doesn't include any PHP best practices but rather intended to sh
 ### Installation
 1. Clone this repository.
 2. cd into to repository.
-3. Copy the project_id, endpoint, and secret key from your Appwrite Console into the global.inc.php file.
+3. Copy the project_id, endpoint, and secret key from your Appwrite Console into the global.inc.php file, or pass them through the `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID` and `APPWRITE_API_KEY` environment variables.
 4. Install dependencies using  composer (`composer install`).
 5. Execute the command `php playground.php`
 6. You will see the JSON response in the console.
 
 ### API Covered in Playground.
-* Create Collection
-* List Collection
-* Add Document
-* List Documents
+* Create Database
+* Create Table
+* List Tables
+* Add Row
+* List Rows
 * Upload File
+* List Files
 * Create User
 * List User
+* Create Function
+* Create Deployment
+* Create Execution
+
+Databases now hold tables of rows. The older collections and documents API is
+deprecated since Appwrite 1.8, so the playground uses the `TablesDB` service.
+
+### Tests
+`composer test` drives every example against a stub of the Appwrite API, so it
+needs no running instance:
+
+```
+composer test
+```
 
 ## Contributing
 

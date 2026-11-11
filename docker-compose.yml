@@ -1,9 +1,13 @@
-version: '3.9'
-
 services:
   playground-for-php:
     build: .
+    # Mount the files worth editing rather than the whole directory, so the
+    # dependencies installed into the image stay in place.
     volumes:
-      - "./:/app"
-    working_dir: /app
+      - "./playground.php:/app/playground.php"
+      - "./global.inc.php:/app/global.inc.php"
+    environment:
+      - APPWRITE_ENDPOINT
+      - APPWRITE_PROJECT_ID
+      - APPWRITE_API_KEY
     command: "php playground.php"
