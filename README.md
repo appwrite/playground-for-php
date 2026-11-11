@@ -11,7 +11,7 @@ Appwrite playground is a simple way to explore the Appwrite API & Appwrite PHP S
 This playground doesn't include any PHP best practices but rather intended to show some of the most simple examples and use cases of using the Appwrite API in your PHP application and server.
 
 ## System Requirements
-* A system with PHP installed.
+* A system with PHP 8.5 or later installed — that is what `appwrite/appwrite` 32.x requires.
 * You have readily available Appwrite running instance (localhost in most cases).
 * Create a project in Appwrite instance using console.
 * Generate a secret key in the Appwrite instance using console.
@@ -25,13 +25,48 @@ This playground doesn't include any PHP best practices but rather intended to sh
 6. You will see the JSON response in the console.
 
 ### API Covered in Playground.
-* Create Collection
-* List Collection
-* Add Document
-* List Documents
+* Create Table
+* List Tables
+* Add Row
 * Upload File
+* List Files
 * Create User
-* List User
+* List Users
+* Mark a user verified
+* Confirm an email verification code
+* Create, deploy and execute a Function
+
+Tables, rows and columns are what Appwrite 1.8 renamed collections, documents
+and attributes to. The playground uses the `TablesDB` service; the `Databases`
+service still answers to the old names but is deprecated.
+
+### Verifying a user from a server
+
+Two calls can end up with a verified user, and they are not interchangeable:
+
+* `markUserVerified()` uses `users->updateEmailVerification()`. It needs
+  `users.write`, takes no code, and is the right call when the server itself is
+  the one deciding a user is verified.
+* `confirmEmailVerification()` replays the six digit code Appwrite sent the
+  user. Appwrite counts every attempt against that route — including attempts
+  made with an API key — at 10 per user per hour, so a server that retries after
+  a rejected code spends the budget and then gets
+  `429 general_rate_limit_exceeded` for the rest of the hour, the user's own
+  correct code included. Treat a rejected code as final and issue a fresh one.
+
+Set `VERIFICATION_USER_ID` and `VERIFICATION_SECRET` in `global.inc.php` to run
+`confirmEmailVerification()`; it is skipped while they are empty.
+
+### Tests
+
+`composer test` runs the playground against a stub Appwrite served by PHP's
+built-in web server, so it needs no running instance:
+
+* `tests/smoke.php` — every playground call succeeds and hits the endpoint it
+  means to.
+* `tests/verification.php` — the verification confirmation routes count every
+  caller, and the playground reports a rate limited confirmation instead of
+  failing the run.
 
 ## Contributing
 
