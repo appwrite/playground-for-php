@@ -23,9 +23,9 @@
     }
   ],
   "require": {
-    "php": ">=8.0",
+    "php": ">=8.5",
     "ext-curl": "*",
-    "appwrite/appwrite": "^12.0.0"
+    "appwrite/appwrite": "^32.0.0"
   },
   "config": {
     "optimize-autoloader": true,
