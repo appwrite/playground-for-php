@@ -13,6 +13,17 @@ if (!\defined('API_KEY')) {
     \define('API_KEY', '<Your Project Secret Api key />');
 }
 
+// The two query parameters Appwrite appends to a verification link, needed by
+// the `updateEmailVerification` calls in `playground.php`.
+
+if (!\defined('VERIFICATION_USER_ID')) {
+    \define('VERIFICATION_USER_ID', '<User ID from the verification email />');
+}
+
+if (!\defined('VERIFICATION_SECRET')) {
+    \define('VERIFICATION_SECRET', '<Secret from the verification email />');
+}
+
 // Helper functions
 
 /**
