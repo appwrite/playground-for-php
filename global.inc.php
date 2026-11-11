@@ -13,6 +13,18 @@ if (!\defined('API_KEY')) {
     \define('API_KEY', '<Your Project Secret Api key />');
 }
 
+// A user id and the verification code that user received, used by
+// `confirmEmailVerification()` in `playground.php`. Both empty skips that call:
+// Appwrite counts every attempt against the route — an API key included — at 10
+// per user per hour, so there is nothing to be gained from guessing a code.
+if (!\defined('VERIFICATION_USER_ID')) {
+    \define('VERIFICATION_USER_ID', '');
+}
+
+if (!\defined('VERIFICATION_SECRET')) {
+    \define('VERIFICATION_SECRET', '');
+}
+
 // Helper functions
 
 /**
