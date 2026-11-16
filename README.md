@@ -68,6 +68,37 @@ confirmation as something it gets a handful of tries at per user:
 
 `createSessionFromToken()` in `playground.php` shows the shape of that handling.
 
+### Queued work
+
+Asking for an asynchronous function run is two steps on the server: the
+execution row is written, and then the job is published to the message queue the
+function workers read. If the publish throws, the row is already there and the
+caller is answered `500 general_unknown` — the generic code every unhandled
+server error folds into, which says nothing about how far the server got.
+
+[appwrite/appwrite#15510](https://github.com/appwrite/appwrite/pull/15510)
+removed the common cause of that failure. A pooled connection to the message
+broker that nothing had read since the broker closed it — during a rolling
+restart, where each node announces itself and then drops the sockets parked on
+it — was written into before anything read it, so the first publish after a
+restart threw. The server now acts on whatever the broker already sent before it
+writes. Nothing in the SDK changed; a publish already in flight when a close
+lands is still ambiguous, so the `500` stays possible, just rare.
+
+What a caller has to hold up is not retrying into it. If the row was written,
+a retry queues a *second* run and the function does its work twice.
+`createExecution()` takes no caller-chosen execution ID, so there is nothing to
+retry *as* — but it does take the path the function is called on, and the server
+stores that, query string included, as the execution's `requestPath`. Tag the
+attempt there and `listExecutions()` will say what it left behind:
+
+* nothing carries the tag — the attempt left no trace, so retrying is safe;
+* something does — the run is registered; queueing another would double it. One
+  still `waiting` long afterwards lost its publish, and replacing it is a
+  decision to make, not a retry.
+
+`createAsyncExecution()` in `playground.php` shows that handling.
+
 ## Tests
 
 `composer test` runs the playground end to end against a stub Appwrite
@@ -76,8 +107,11 @@ every call succeeded and hit the endpoint it was supposed to
 (`tests/smoke.php`), and then drives the abuse-limited confirmation routes with
 an API key to check that wrong guesses are counted for it, that the count is per
 user, and that the `429` reaches the caller in a shape it can act on
-(`tests/code-guesses.php`). No Appwrite instance and no network access are
-needed.
+(`tests/code-guesses.php`). It then runs the playground twice more against a
+stub told to fail one async execution, with and without recording the execution
+first, to check that the ambiguous `500` is reconciled rather than blindly
+retried (`tests/queue-restart.php`). No Appwrite instance and no network access
+are needed.
 
 ## Contributing
 
