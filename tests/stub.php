@@ -55,7 +55,11 @@ final class Stub
         return $file;
     }
 
-    public static function start(): self
+    /**
+     * @param array<string, string> $env extra environment for the stub server,
+     *        used to ask it for a behaviour a test needs
+     */
+    public static function start(array $env = []): self
     {
         $root = \dirname(__DIR__);
         $port = self::freePort();
@@ -72,7 +76,7 @@ final class Stub
             [1 => ['file', '/dev/null', 'w'], 2 => $errors],
             $pipes,
             $root,
-            ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + \getenv()
+            ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + $env + \getenv()
         );
 
         if (!\is_resource($process)) {
@@ -106,7 +110,8 @@ final class Stub
     /**
      * The requests the stub has served so far, oldest first.
      *
-     * @return list<array{method: string, path: string, project: string}>
+     * @return list<array{method: string, path: string, project: string, keyed: bool,
+     *         executionPath: string|null, async: bool|null}>
      */
     public function requests(): array
     {

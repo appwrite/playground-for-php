@@ -7,7 +7,9 @@ use Appwrite\Enums\ExecutionMethod;
 use Appwrite\Enums\Runtime;
 use Appwrite\ID;
 use Appwrite\InputFile;
+use Appwrite\Models\Execution;
 use Appwrite\Permission;
+use Appwrite\Query;
 use Appwrite\Role;
 use Appwrite\Services\Account;
 use Appwrite\Services\Functions;
@@ -26,6 +28,11 @@ $tableId = "";
 $bucketId = "";
 $fileId = "";
 $functionId = "";
+
+/**
+ * How many times `createAsyncExecution()` will queue a run before giving up.
+ */
+const ENQUEUE_ATTEMPTS = 3;
 
 $tablesDB = new TablesDB($client);
 $storage = new Storage($client);
@@ -582,7 +589,66 @@ function createSyncExecution(): array
 }
 
 /**
- * Create async execution
+ * Find the execution a tagged attempt left behind, if the server got that far.
+ *
+ * `createExecution()` takes no caller-chosen execution ID, so there is nothing
+ * to look an attempt up by. What it does take is the path the function will be
+ * called on, query string included, and the server stores that on the execution
+ * as `requestPath` — so a tag put in the query comes back from
+ * `listExecutions()` and names the attempt that wrote it.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/functions#listExecutions
+ * @throws Exception
+ */
+function findTaggedExecution(string $tag): ?Execution
+{
+    global $functions, $functionId;
+
+    $executions = $functions->listExecutions(
+        $functionId,
+        queries: [
+            Query::orderDesc('$createdAt'),
+            Query::limit(25),
+        ]
+    );
+
+    foreach ($executions->executions as $execution) {
+        if (\str_contains($execution->requestPath, $tag)) {
+            return $execution;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Create async execution, and survive the queue behind it blinking.
+ *
+ * Queueing a run is two server-side steps: the execution row is written, and
+ * then the job is published to the message queue the function workers read. A
+ * publish that throws leaves the row behind and reaches the caller as
+ * `500 general_unknown` — the generic code every unhandled server error folds
+ * into, which says nothing about how far the server got.
+ *
+ * [appwrite/appwrite#15510](https://github.com/appwrite/appwrite/pull/15510)
+ * (CLOUD-3RCB) removed the common cause. A pooled connection to the message
+ * broker that nothing had read since the broker closed it — during a rolling
+ * restart, where each node announces itself and then drops the sockets parked
+ * on it — was written into before anything read it, so the first publish after
+ * a restart threw. The server now acts on whatever the broker already sent
+ * before it writes, and reconnects while doing that is still safe. A publish
+ * already in flight when the close lands stays ambiguous, so this remains a
+ * `500` a caller can meet — just rarely.
+ *
+ * Retrying such a `500` blindly is what hurts: if the row was written, the
+ * retry queues a *second* run and the function does its work twice. So tag the
+ * attempt, and when the answer is ambiguous ask what was recorded:
+ *
+ * - nothing carries the tag — the attempt left no trace, so retrying it cannot
+ *   duplicate anything;
+ * - something does — the run is already registered and queueing another would
+ *   double it. One still at `waiting` long afterwards is a run whose publish
+ *   was lost; replacing it is a decision for the caller, not a blind retry.
  *
  * @see https://appwrite.io/docs/references/cloud/server-php/functions#createExecution
  * @throws Exception
@@ -591,14 +657,54 @@ function createAsyncExecution(): array
 {
     global $functions, $functionId;
 
-    $response = $functions->createExecution(
-        functionId: $functionId,
-        body: "",
-        async: true,
-        xpath: "/",
-        method: ExecutionMethod::GET(),
-        headers: [],
-    );
+    $tag = 'attempt=' . \bin2hex(\random_bytes(8));
+    $response = null;
+
+    for ($attempt = 1; $attempt <= ENQUEUE_ATTEMPTS; $attempt++) {
+        try {
+            $response = $functions->createExecution(
+                functionId: $functionId,
+                body: "",
+                async: true,
+                xpath: "/?{$tag}",
+                method: ExecutionMethod::GET(),
+                headers: [],
+            );
+
+            break;
+        } catch (AppwriteException $e) {
+            // Anything the server could name — a missing function, a build that
+            // is not ready — is an answer, not an ambiguity. Only a 5xx leaves
+            // the question of how far it got.
+            if ($e->getCode() < 500) {
+                throw $e;
+            }
+
+            $recorded = findTaggedExecution($tag);
+
+            if ($recorded !== null) {
+                return [
+                    'call' => 'api.createExecution',
+                    'response' => [
+                        'queued' => false,
+                        'code' => $e->getCode(),
+                        'executionId' => $recorded->id,
+                        'status' => (string) $recorded->status,
+                        'message' => 'The execution was recorded before the failure. '
+                            . 'Queueing another would run the function twice.',
+                    ],
+                ];
+            }
+
+            if ($attempt === ENQUEUE_ATTEMPTS) {
+                throw $e;
+            }
+
+            // Back off: a broker losing a node is over in seconds, and the
+            // attempt left nothing behind to collide with.
+            sleep($attempt);
+        }
+    }
 
     // wait for 2 seconds to ensure execution is finished
     sleep(2);
