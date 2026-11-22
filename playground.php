@@ -11,6 +11,7 @@ use Appwrite\Permission;
 use Appwrite\Role;
 use Appwrite\Services\Account;
 use Appwrite\Services\Functions;
+use Appwrite\Services\Project;
 use Appwrite\Services\Storage;
 use Appwrite\Services\TablesDB;
 use Appwrite\Services\Users;
@@ -32,6 +33,7 @@ $storage = new Storage($client);
 $functions = new Functions($client);
 $users = new Users($client);
 $account = new Account($client);
+$project = new Project($client);
 
 /**
  * Covered API methods
@@ -49,6 +51,8 @@ $account = new Account($client);
  * - getAccount
  * - createRecovery
  * - createSessionFromToken
+ * - listPlatforms
+ * - createWebPlatform
  */
 
 /**
@@ -505,6 +509,107 @@ function createSessionFromToken(): array
 }
 
 /**
+ * Read the project's web platforms, flag a wildcard, and register an origin.
+ *
+ * The platform list is what Appwrite checks a browser request's origin against:
+ * a credentialed request — one carrying the signed-in user's session cookie,
+ * which the browser attaches on its own — is refused `403` typed
+ * `general_unknown_origin` unless its origin is registered. A project used to
+ * be seeded with the hostname `*`, which matches every origin, so any page a
+ * signed-in user happened to visit could call the project's API as them with
+ * nothing but the public project ID.
+ * [appwrite/appwrite#15509](https://github.com/appwrite/appwrite/pull/15509)
+ * seeds `localhost` ("Local development") instead: enough to build against,
+ * and no origin beyond that until one is added on purpose.
+ *
+ * So there are two things left for a project's own code to do, both here:
+ *
+ * - check the list. Nothing migrates a project created before the fix, so `*`
+ *   can still be registered, and `wildcardHostnames()` in `global.inc.php`
+ *   also catches the `*.example.com` form that the console does not warn about.
+ *   Worth running in a deploy check.
+ * - register the origins the app is really served from, which is the part the
+ *   wildcard used to paper over. A project API key needs the `platforms.read`
+ *   and `platforms.write` scopes for these two calls; a key without them is
+ *   answered `401`, handled below rather than left to abort the run.
+ *
+ * None of this constrains the playground itself. The origin check is skipped
+ * for a request carrying an API key, and the PHP SDK sends no `Origin` header
+ * at all, so a PHP server keeps working against a project that trusts no
+ * browser origin whatsoever — `tests/web-platforms.php` pins that down.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/project#listPlatforms
+ * @throws Exception
+ */
+function reviewWebPlatforms(): array
+{
+    global $project;
+
+    // The one origin a browser app of this project would be served from.
+    $appHostname = 'app.example.com';
+
+    // A readable, fixed ID: this is configuration, so re-running should find
+    // the platform it left rather than pile up another one.
+    $appPlatformId = 'example-web-app';
+
+    try {
+        $registered = $project->listPlatforms()->platforms;
+
+        $hostnames = [];
+
+        foreach ($registered as $platform) {
+            $hostname = (string) ($platform['hostname'] ?? '');
+
+            if ($hostname !== '') {
+                $hostnames[] = $hostname;
+            }
+        }
+
+        $added = null;
+
+        if (!\in_array($appHostname, $hostnames, true)) {
+            $platform = $project->createWebPlatform(
+                platformId: $appPlatformId,
+                name: 'Example web app',
+                hostname: $appHostname
+            );
+
+            $added = $platform->hostname;
+            $hostnames[] = $platform->hostname;
+
+            // Only so the playground leaves the project as it found it. A real
+            // app registers each of its origins once and keeps them.
+            $project->deletePlatform($platform->id);
+        }
+
+        $response = [
+            'hostnames' => $hostnames,
+            // Anything in here answers origins you do not control: remove it.
+            'wildcards' => wildcardHostnames($registered),
+            'added' => $added,
+        ];
+    } catch (AppwriteException $e) {
+        if ($e->getCode() !== 401 && $e->getCode() !== 403) {
+            throw $e;
+        }
+
+        // 401/403: this key is missing `platforms.read` or `platforms.write`.
+        // The list cannot be reviewed from here, so say so instead of leaving
+        // the impression that there is no wildcard registered.
+        $response = [
+            'platformsReviewed' => false,
+            'code' => $e->getCode(),
+            'message' => $e->getMessage(),
+        ];
+    }
+
+    return [
+        'call' => 'api.reviewWebPlatforms',
+        'response' => $response,
+    ];
+}
+
+/**
  * Create a function
  *
  * @see https://appwrite.io/docs/references/cloud/server-php/functions#create
@@ -653,6 +758,7 @@ function deleteFunction(): array
  */
 $ret = [];
 $methods = [
+    'reviewWebPlatforms',
     'createDatabase',
     'createTable',
     'listTables',

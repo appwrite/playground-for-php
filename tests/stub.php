@@ -55,7 +55,16 @@ final class Stub
         return $file;
     }
 
-    public static function start(): self
+    /**
+     * Start a stub server.
+     *
+     * `$env` is handed to it on top of `STUB_LOG` and `STUB_STATE`, which is how
+     * a test asks for one of its variants — a project still carrying a wildcard
+     * platform, or a key without the platform scopes.
+     *
+     * @param array<string, string> $env
+     */
+    public static function start(array $env = []): self
     {
         $root = \dirname(__DIR__);
         $port = self::freePort();
@@ -72,7 +81,7 @@ final class Stub
             [1 => ['file', '/dev/null', 'w'], 2 => $errors],
             $pipes,
             $root,
-            ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + \getenv()
+            $env + ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + \getenv()
         );
 
         if (!\is_resource($process)) {
@@ -106,7 +115,7 @@ final class Stub
     /**
      * The requests the stub has served so far, oldest first.
      *
-     * @return list<array{method: string, path: string, project: string}>
+     * @return list<array{method: string, path: string, project: string, keyed: bool, origin: string, body: array<string, mixed>}>
      */
     public function requests(): array
     {

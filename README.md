@@ -34,6 +34,7 @@ This playground doesn't include any PHP best practices but rather intended to sh
 * List User
 * Request Password Recovery
 * Log a User In From a Token Secret
+* Review the Project's Web Platforms
 * Create Function, Deployment and Executions
 
 Collections and documents were renamed to tables and rows in Appwrite 1.8. The
@@ -68,6 +69,34 @@ confirmation as something it gets a handful of tries at per user:
 
 `createSessionFromToken()` in `playground.php` shows the shape of that handling.
 
+### Web platforms and origins
+
+A project's web platforms are the origins Appwrite answers a credentialed
+browser request from. A request whose origin is not registered is refused `403`
+typed `general_unknown_origin`.
+
+The console used to seed a new project with the hostname `*`, which matches
+every origin. Since
+[appwrite/appwrite#15509](https://github.com/appwrite/appwrite/pull/15509) it
+seeds `localhost` ("Local development") instead: a browser app still talks to a
+local Appwrite without touching the console, and no other origin is trusted
+until it is added. A wildcard can still be entered by hand, and nothing
+migrates a project created before the fix, so `*` may well be registered on one.
+
+That is worth checking from code, because a wildcard means any page a signed-in
+user visits can call the project as them — their session cookie goes along on
+its own, and the public project ID is all the page needs.
+`reviewWebPlatforms()` in `playground.php` reads the list, flags a wildcard with
+`wildcardHostnames()` from `global.inc.php` (the `*.example.com` form included,
+which the console does not warn about) and registers the one hostname a browser
+app of the project is served from.
+
+None of this constrains this playground, or any PHP server: the origin check is
+skipped for a request carrying an API key, and the SDK sends no `Origin` header
+at all. Reading and writing the list needs a key with the `platforms.read` and
+`platforms.write` scopes; without them the calls answer `401`, which
+`reviewWebPlatforms()` reports rather than mistaking for an all-clear.
+
 ## Tests
 
 `composer test` runs the playground end to end against a stub Appwrite
@@ -76,8 +105,12 @@ every call succeeded and hit the endpoint it was supposed to
 (`tests/smoke.php`), and then drives the abuse-limited confirmation routes with
 an API key to check that wrong guesses are counted for it, that the count is per
 user, and that the `429` reaches the caller in a shape it can act on
-(`tests/code-guesses.php`). No Appwrite instance and no network access are
-needed.
+(`tests/code-guesses.php`). `tests/web-platforms.php` then checks the platform
+list: that a project seeded since appwrite/appwrite#15509 trusts `localhost` and
+nothing else, that the wildcard a project from before it still carries is found,
+that registering an origin from PHP never sends a wildcard, and that a PHP
+caller — keyed or with a JWT — sends no origin and so is unaffected either way.
+No Appwrite instance and no network access are needed.
 
 ## Contributing
 

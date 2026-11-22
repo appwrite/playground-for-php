@@ -15,6 +15,17 @@
  * once a user's share of attempts is spent. The count is kept for every caller,
  * an API key holder included, which is what appwrite/appwrite#15470 fixed. See
  * `tests/code-guesses.php`.
+ *
+ * The project's web platforms live in the same file, seeded the way the console
+ * seeds a new project: one `localhost` platform since appwrite/appwrite#15509,
+ * or the wildcard a project created before it still carries when
+ * `STUB_LEGACY_WILDCARD=1`. Every request is then held to the check Appwrite's
+ * init runs — a state-changing request that carries no API key has to come from
+ * an origin one of those platforms names. See `tests/web-platforms.php`.
+ *
+ * Env vars: `STUB_LOG`, `STUB_STATE`, `STUB_LEGACY_WILDCARD`,
+ * `STUB_NO_PLATFORM_SCOPE` (answer the platform routes `401`, the way a key
+ * without the `platforms.read` and `platforms.write` scopes is answered).
  */
 
 declare(strict_types=1);
@@ -29,9 +40,42 @@ const GUESS_LIMIT = 10;
  */
 const VALID_SECRET = 'playground-secret';
 
+/**
+ * The web platform the console seeds a new project with since
+ * appwrite/appwrite#15509: the hostname a developer runs their app on while
+ * building it, and no other origin.
+ */
+const SEEDED_PLATFORMS = [
+    ['$id' => 'local-development', 'name' => 'Local development', 'type' => 'web', 'hostname' => 'localhost'],
+];
+
+/**
+ * What a project created before that fix still carries, because nothing
+ * migrates it: the wildcard the console used to seed, which trusts every
+ * origin, and the prefix form of it that the console's warning does not catch.
+ */
+const LEGACY_PLATFORMS = [
+    ['$id' => 'any-origin', 'name' => 'Web app', 'type' => 'web', 'hostname' => '*'],
+    ['$id' => 'any-subdomain', 'name' => 'Web app (subdomains)', 'type' => 'web', 'hostname' => '*.example.com'],
+];
+
+/**
+ * The methods Appwrite holds to the origin check: the ones that can change
+ * something, so that a page in a browser cannot act as the signed-in user.
+ */
+const GUARDED_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = \parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 $project = $_SERVER['HTTP_X_APPWRITE_PROJECT'] ?? '';
+$keyed = ($_SERVER['HTTP_X_APPWRITE_KEY'] ?? '') !== '';
+
+/**
+ * A browser sends the page's origin on a cross-site request; no server SDK
+ * sends one, which is the whole reason the platform list does not constrain
+ * them.
+ */
+$origin = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
 
 $log = \getenv('STUB_LOG');
 if (\is_string($log) && $log !== '') {
@@ -42,9 +86,14 @@ if (\is_string($log) && $log !== '') {
             'path' => $path,
             'project' => $project,
             // Whether the caller held an API key, which used to exempt it from
-            // the limits on the routes below.
-            'keyed' => ($_SERVER['HTTP_X_APPWRITE_KEY'] ?? '') !== '',
-        ]) . "\n",
+            // the limits on the routes below, and still exempts it from the
+            // origin check.
+            'keyed' => $keyed,
+            'origin' => $origin,
+            // The JSON body, or an empty array for a request without one. A
+            // multipart upload does not decode, which is all the tests need.
+            'body' => body(),
+        ], JSON_INVALID_UTF8_SUBSTITUTE) . "\n",
         FILE_APPEND | LOCK_EX
     );
 }
@@ -84,7 +133,40 @@ function body(): array
 }
 
 /**
- * Read the counters, run `$change` over them and write back what it returns.
+ * Read the stub's state, run `$change` over it and write back what it returns,
+ * holding the file for the whole of it so concurrent requests cannot interleave.
+ *
+ * @param callable(array<string, mixed>): array<string, mixed> $change
+ * @return array<string, mixed> the state after the change
+ */
+function state(callable $change): array
+{
+    $file = \getenv('STUB_STATE');
+
+    if (!\is_string($file) || $file === '') {
+        return $change([]);
+    }
+
+    $handle = \fopen($file, 'c+');
+
+    if ($handle === false) {
+        respond(500, ['message' => 'Stub could not open its state', 'type' => 'general_unknown', 'code' => 500]);
+    }
+
+    \flock($handle, LOCK_EX);
+    $state = $change(\json_decode(\stream_get_contents($handle) ?: '{}', true) ?: []);
+    \ftruncate($handle, 0);
+    \rewind($handle);
+    \fwrite($handle, (string) \json_encode($state));
+    \fflush($handle);
+    \flock($handle, LOCK_UN);
+    \fclose($handle);
+
+    return $state;
+}
+
+/**
+ * The wrong-guess counters, keyed by project, route and user.
  *
  * Nothing here looks at whether the caller holds an API key: the limits on the
  * routes that confirm a secret count for every caller.
@@ -94,33 +176,71 @@ function body(): array
  */
 function counters(callable $change): array
 {
-    $state = \getenv('STUB_STATE');
+    return state(static function (array $state) use ($change): array {
+        $state['counters'] = $change($state['counters'] ?? []);
 
-    if (!\is_string($state) || $state === '') {
-        return $change([]);
-    }
-
-    $handle = \fopen($state, 'c+');
-
-    if ($handle === false) {
-        respond(500, ['message' => 'Stub could not open its state', 'type' => 'general_unknown', 'code' => 500]);
-    }
-
-    \flock($handle, LOCK_EX);
-    $counts = $change(\json_decode(\stream_get_contents($handle) ?: '{}', true) ?: []);
-    \ftruncate($handle, 0);
-    \rewind($handle);
-    \fwrite($handle, (string) \json_encode($counts));
-    \fflush($handle);
-    \flock($handle, LOCK_UN);
-    \fclose($handle);
-
-    return $counts;
+        return $state;
+    })['counters'] ?? [];
 }
 
 function spent(string $counter): int
 {
     return counters(static fn (array $counts): array => $counts)[$counter] ?? 0;
+}
+
+/**
+ * The project's platforms, seeded on first read the way the console seeds them.
+ *
+ * @param null|callable(list<array<string, string>>): list<array<string, string>> $change
+ * @return list<array<string, string>> the platforms after the change
+ */
+function platforms(?callable $change = null): array
+{
+    return state(static function (array $state) use ($change): array {
+        $state['platforms'] ??= \getenv('STUB_LEGACY_WILDCARD') === '1'
+            ? LEGACY_PLATFORMS
+            : SEEDED_PLATFORMS;
+
+        if ($change !== null) {
+            $state['platforms'] = $change($state['platforms']);
+        }
+
+        return $state;
+    })['platforms'] ?? [];
+}
+
+/**
+ * Is `$origin` one the project's platforms names?
+ *
+ * An empty origin is every server SDK, which sends no `Origin` header at all:
+ * not a browser, so the platform list has nothing to say about it. A `*`
+ * hostname is the wildcard the console used to seed, and matches anything.
+ */
+function originAllowed(string $origin): bool
+{
+    if ($origin === '') {
+        return true;
+    }
+
+    $host = (string) (\parse_url($origin, PHP_URL_HOST) ?: '');
+
+    foreach (platforms() as $platform) {
+        if (($platform['type'] ?? '') !== 'web') {
+            continue;
+        }
+
+        $hostname = (string) ($platform['hostname'] ?? '');
+
+        if ($hostname === '*' || ($hostname !== '' && $hostname === $host)) {
+            return true;
+        }
+
+        if (\str_starts_with($hostname, '*.') && \str_ends_with($host, \substr($hostname, 1))) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function spend(string $counter): void
@@ -182,6 +302,25 @@ function confirmSecret(string $project, string $path, array $success, bool $coun
     ]);
 }
 
+/**
+ * The check Appwrite's init runs before a route sees the request: a
+ * state-changing request that carries no API key has to come from an origin one
+ * of the project's platforms names, or it is refused `403`.
+ *
+ * A key holder is exempt. A key is not something a browser attaches to a
+ * drive-by request, so the origin tells the server nothing it needs; a session
+ * cookie is exactly that, which is why a project trusting `*` let any page a
+ * signed-in user visited act as them. appwrite/appwrite#15509 stopped seeding
+ * that wildcard.
+ */
+if (!$keyed && \in_array($method, GUARDED_METHODS, true) && !originAllowed($origin)) {
+    respond(403, [
+        'message' => "Invalid Origin. Register your new client ({$origin}) as a new Web platform on your project console dashboard",
+        'type' => 'general_unknown_origin',
+        'code' => 403,
+    ]);
+}
+
 if ($method === 'POST' && $path === '/v1/account/sessions/token') {
     confirmSecret($project, $path, [
         '$id' => 'playground-session',
@@ -195,6 +334,74 @@ if ($method === 'PUT' && $path === '/v1/account/recovery/otp') {
         '$id' => 'playground-token',
         'userId' => 'playground-user',
     ], countEveryAttempt: true);
+}
+
+/**
+ * The platform routes of the project service. They answer `401` when
+ * `STUB_NO_PLATFORM_SCOPE=1`, the way a project API key without the
+ * `platforms.read` or `platforms.write` scope is answered.
+ */
+if (\str_starts_with($path, '/v1/project/platforms')) {
+    if (\getenv('STUB_NO_PLATFORM_SCOPE') === '1') {
+        respond(401, [
+            'message' => 'app.' . $project . '@service.local (role: applications) missing scope (platforms.write)',
+            'type' => 'general_unauthorized_scope',
+            'code' => 401,
+        ]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/project/platforms') {
+        $registered = platforms();
+
+        respond(200, ['total' => \count($registered), 'platforms' => $registered]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/project/platforms/web') {
+        $body = body();
+        $platform = [
+            '$id' => (string) ($body['platformId'] ?? 'playground-platform'),
+            '$createdAt' => '2026-11-22T00:00:00.000+00:00',
+            '$updatedAt' => '2026-11-22T00:00:00.000+00:00',
+            'name' => (string) ($body['name'] ?? ''),
+            'type' => 'web',
+            'hostname' => (string) ($body['hostname'] ?? ''),
+        ];
+
+        // The server does not refuse a hostname that is already registered, so
+        // neither does this; a caller that does not want duplicates reads the
+        // list first, the way the playground does.
+        platforms(static function (array $registered) use ($platform): array {
+            $registered[] = $platform;
+
+            return $registered;
+        });
+
+        respond(201, $platform);
+    }
+
+    if ($method === 'DELETE' && \preg_match('#^/v1/project/platforms/([^/]+)$#', $path, $matches) === 1) {
+        $found = false;
+
+        platforms(static function (array $registered) use ($matches, &$found): array {
+            $kept = \array_values(\array_filter(
+                $registered,
+                static fn (array $platform): bool => ($platform['$id'] ?? '') !== $matches[1]
+            ));
+            $found = \count($kept) !== \count($registered);
+
+            return $kept;
+        });
+
+        if (!$found) {
+            respond(404, [
+                'message' => 'Platform with the requested ID could not be found.',
+                'type' => 'platform_not_found',
+                'code' => 404,
+            ]);
+        }
+
+        respond(204, null);
+    }
 }
 
 /**
@@ -233,6 +440,10 @@ $routes = [
     // Reached only once the JWT-only call at the end of the playground's
     // `$methods` list is uncommented.
     ['GET', '/v1/account', 200, ['$id' => 'playground-user', 'email' => 'email@example.com', 'prefs' => []]],
+
+    // A write a caller makes as the user rather than with a key, which is the
+    // kind of request the origin check above is there for.
+    ['PATCH', '/v1/account/name', 200, ['$id' => 'playground-user', 'name' => 'Renamed', 'email' => 'email@example.com', 'prefs' => []]],
 ];
 
 /**

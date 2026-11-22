@@ -16,6 +16,7 @@ if (!\is_file($root . '/vendor/autoload.php')) {
     exit(1);
 }
 
+require $root . '/global.inc.php';
 require __DIR__ . '/stub.php';
 
 /**
@@ -24,6 +25,7 @@ require __DIR__ . '/stub.php';
  * none of them failed.
  */
 $expectedCalls = [
+    'api.reviewWebPlatforms',
     'api.createDatabase',
     'api.createTable',
     'api.listTables',
@@ -52,6 +54,10 @@ $expectedCalls = [
  * fixed IDs, so the paths are fully determined.
  */
 $expectedRequests = [
+    ['GET', '/v1/project/platforms'],
+    ['POST', '/v1/project/platforms/web'],
+    ['DELETE', '/v1/project/platforms/example-web-app'],
+
     ['POST', '/v1/tablesdb'],
     ['POST', '/v1/tablesdb/playground-db/tables'],
     ['POST', '/v1/tablesdb/playground-db/tables/playground-table/columns/string'],
@@ -160,6 +166,33 @@ try {
     foreach ($stub->requests() as $request) {
         if ($request['project'] !== 'playground') {
             $failures[] = "{$request['method']} {$request['path']} did not carry the project";
+        }
+    }
+
+    /**
+     * A project is no longer seeded with a web platform trusting `*`
+     * (appwrite/appwrite#15509), so the stub's project trusts one hostname and
+     * refuses every other origin on a request without a key. The playground
+     * runs through it untouched because it is not a browser: it sends no
+     * `Origin` header on any request, and holds a key besides. An SDK that
+     * started sending one would turn this into a wall of 403s, so it is worth
+     * holding down.
+     */
+    foreach ($stub->requests() as $request) {
+        if (($request['origin'] ?? '') !== '') {
+            $failures[] = "{$request['method']} {$request['path']} sent an origin: {$request['origin']}";
+        }
+    }
+
+    /**
+     * And nothing the playground registers may be a wildcard, which would put
+     * back exactly what that fix removed.
+     */
+    foreach ($stub->requests() as $request) {
+        $hostname = (string) ($request['body']['hostname'] ?? '');
+
+        if (wildcardHostnames([['hostname' => $hostname]]) !== []) {
+            $failures[] = "{$request['method']} {$request['path']} registered the wildcard hostname {$hostname}";
         }
     }
 
