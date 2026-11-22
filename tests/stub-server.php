@@ -21,6 +21,14 @@
  * once a user's share of attempts is spent. The count is kept for every caller,
  * an API key holder included, which is what appwrite/appwrite#15470 fixed. See
  * `tests/code-guesses.php`.
+ *
+ * The index routes keep their documents in the same file, and stand in for the
+ * index worker: an index is settled the moment it is created, a unique one over
+ * the stub's repeating rows settles as `failed`, and deleting a column prunes it
+ * out of every index that covered it. `STUB_INDEX_PRE_15471` asks for the worker
+ * as it behaved before appwrite/appwrite#15471 — a delete that leaves a failed
+ * index behind as `stuck`, and pruning by value rather than by position. See
+ * `tests/index-cleanup.php`.
  */
 
 declare(strict_types=1);
@@ -59,6 +67,17 @@ const SEARCHED_USER_POPULATION = 7;
  * `APP_LIMIT_LIST_DEFAULT`.
  */
 const LIST_LIMIT_DEFAULT = 25;
+
+/**
+ * The timestamp every document the stub hands back claims to be from.
+ */
+const STUB_TIMESTAMP = '2026-01-01T00:00:00.000+00:00';
+
+/**
+ * What the index worker says about a unique index it could not build. The
+ * stub's rows repeat a value, so a unique index over them can only fail.
+ */
+const DUPLICATE_INDEX_ERROR = 'Index creation failed: duplicate values in the indexed columns.';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = \parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
@@ -118,15 +137,15 @@ function body(): array
 }
 
 /**
- * Read the counters, run `$change` over them and write back what it returns.
+ * Read the stub's state, run `$change` over it and write back what it returns.
  *
- * Nothing here looks at whether the caller holds an API key: the limits on the
- * routes that confirm a secret count for every caller.
+ * Everything the stub remembers between requests lives in here: the guess
+ * counters below, and the index documents further down.
  *
- * @param callable(array<string, int>): array<string, int> $change
- * @return array<string, int> the counters after the change
+ * @param callable(array<string, mixed>): array<string, mixed> $change
+ * @return array<string, mixed> the state after the change
  */
-function counters(callable $change): array
+function state(callable $change): array
 {
     $state = \getenv('STUB_STATE');
 
@@ -141,28 +160,32 @@ function counters(callable $change): array
     }
 
     \flock($handle, LOCK_EX);
-    $counts = $change(\json_decode(\stream_get_contents($handle) ?: '{}', true) ?: []);
+    $stored = $change(\json_decode(\stream_get_contents($handle) ?: '{}', true) ?: []);
     \ftruncate($handle, 0);
     \rewind($handle);
-    \fwrite($handle, (string) \json_encode($counts));
+    \fwrite($handle, (string) \json_encode($stored));
     \fflush($handle);
     \flock($handle, LOCK_UN);
     \fclose($handle);
 
-    return $counts;
+    return $stored;
 }
 
+/**
+ * Nothing in the two below looks at whether the caller holds an API key: the
+ * limits on the routes that confirm a secret count for every caller.
+ */
 function spent(string $counter): int
 {
-    return counters(static fn (array $counts): array => $counts)[$counter] ?? 0;
+    return (int) (state(static fn (array $stored): array => $stored)[$counter] ?? 0);
 }
 
 function spend(string $counter): void
 {
-    counters(static function (array $counts) use ($counter): array {
-        $counts[$counter] = ($counts[$counter] ?? 0) + 1;
+    state(static function (array $stored) use ($counter): array {
+        $stored[$counter] = ((int) ($stored[$counter] ?? 0)) + 1;
 
-        return $counts;
+        return $stored;
     });
 }
 
@@ -316,6 +339,252 @@ if ($method === 'GET' && $path === '/v1/users') {
 }
 
 /**
+ * Does the stub stand in for the index worker as it behaved before
+ * appwrite/appwrite#15471?
+ */
+function pre15471(): bool
+{
+    return \in_array(\getenv('STUB_INDEX_PRE_15471'), ['1', 'true'], true);
+}
+
+/**
+ * The stored indexes, keyed by index key.
+ *
+ * @return array<string, array<string, mixed>>
+ */
+function storedIndexes(): array
+{
+    return (array) (state(static fn (array $stored): array => $stored)['indexes'] ?? []);
+}
+
+/**
+ * Run `$change` over the stored indexes and write back what it returns.
+ *
+ * @param callable(array<string, array<string, mixed>>): array<string, array<string, mixed>> $change
+ */
+function changeIndexes(callable $change): void
+{
+    state(static function (array $stored) use ($change): array {
+        $stored['indexes'] = $change((array) ($stored['indexes'] ?? []));
+
+        return $stored;
+    });
+}
+
+/**
+ * An index as a response model.
+ *
+ * @param array<string, mixed> $index
+ * @return array<string, mixed>
+ */
+function indexDocument(string $key, array $index, ?string $status = null): array
+{
+    return [
+        '$id' => $key,
+        '$createdAt' => STUB_TIMESTAMP,
+        '$updatedAt' => STUB_TIMESTAMP,
+        'key' => $key,
+        'description' => '',
+        'type' => $index['type'],
+        'status' => $status ?? $index['status'],
+        'error' => $status === null ? $index['error'] : '',
+        'columns' => $index['columns'],
+        'lengths' => $index['lengths'],
+        'orders' => $index['orders'],
+    ];
+}
+
+function indexNotFound(): never
+{
+    respond(404, [
+        'message' => 'Index with the requested ID could not be found.',
+        'type' => 'index_not_found',
+        'code' => 404,
+    ]);
+}
+
+/**
+ * `POST .../indexes`: accept an index and settle it the way the worker would.
+ *
+ * The route answers `202` and a `processing` status, because the worker has not
+ * run yet; the status the stub stores is the one the next read will show. A
+ * unique index is the one that cannot be built: the stub's rows repeat a value.
+ */
+function createIndex(): never
+{
+    $body = body();
+    $key = (string) ($body['key'] ?? '');
+    $type = (string) ($body['type'] ?? 'key');
+    $columns = (array) ($body['columns'] ?? []);
+
+    // A unique index is the one the worker cannot build, so it is also the one
+    // whose schema entry never comes to exist — which is what the delete below
+    // used to give up on.
+    $built = $type !== 'unique';
+
+    $index = [
+        'type' => $type,
+        'schema' => $built,
+        'status' => $built ? 'available' : 'failed',
+        'error' => $built ? '' : DUPLICATE_INDEX_ERROR,
+        'columns' => \array_values($columns),
+        'lengths' => \array_values((array) ($body['lengths'] ?? [])),
+        'orders' => \array_values((array) ($body['orders'] ?? [])),
+    ];
+
+    changeIndexes(static function (array $indexes) use ($key, $index): array {
+        $indexes[$key] = $index;
+
+        return $indexes;
+    });
+
+    respond(202, indexDocument($key, $index, status: 'processing'));
+}
+
+/**
+ * `DELETE .../indexes/{key}`: drop the index document.
+ *
+ * Since appwrite/appwrite#15471 the worker drops the document even when the
+ * schema has no such index to drop — which is the case for an index that never
+ * finished creating. Before it, that was recorded as a failed delete and the
+ * index was left behind as `stuck`, with every retry taking the same path.
+ */
+function deleteIndex(string $key): never
+{
+    $indexes = storedIndexes();
+
+    if (!isset($indexes[$key])) {
+        indexNotFound();
+    }
+
+    // The worker drops the index from the schema and then the document. Before
+    // appwrite/appwrite#15471 an index the schema did not hold stopped it at the
+    // first step: it recorded the delete as failed and left the document behind
+    // as `stuck`. The schema holds no more of it on the next attempt than it did
+    // on this one, so a retry got exactly this far too.
+    $stuck = pre15471() && $indexes[$key]['schema'] === false;
+
+    changeIndexes(static function (array $indexes) use ($key, $stuck): array {
+        if ($stuck) {
+            $indexes[$key]['status'] = 'stuck';
+            $indexes[$key]['error'] = 'Index not found';
+
+            return $indexes;
+        }
+
+        unset($indexes[$key]);
+
+        return $indexes;
+    });
+
+    respond(204);
+}
+
+/**
+ * `DELETE .../columns/{key}`: prune the column out of every index over it.
+ *
+ * A length and an order describe the column at their own position, so the
+ * removed column takes the ones at its position with it, and an index left with
+ * no columns goes altogether. Before appwrite/appwrite#15471 they were pruned by
+ * value, which for repeating lengths dropped every length equal to the removed
+ * one.
+ */
+function deleteColumn(string $key): never
+{
+    $byValue = pre15471();
+
+    changeIndexes(static function (array $indexes) use ($key, $byValue): array {
+        foreach ($indexes as $indexKey => $index) {
+            $found = \array_search($key, $index['columns'], true);
+
+            if ($found === false) {
+                continue;
+            }
+
+            if ($byValue) {
+                foreach (['columns', 'lengths', 'orders'] as $list) {
+                    $index[$list] = \array_values(\array_diff(
+                        $index[$list],
+                        isset($index[$list][$found]) ? [$index[$list][$found]] : []
+                    ));
+                }
+            } else {
+                foreach (['columns', 'lengths', 'orders'] as $list) {
+                    \array_splice($index[$list], $found, 1);
+                }
+            }
+
+            if ($index['columns'] === []) {
+                unset($indexes[$indexKey]);
+                continue;
+            }
+
+            $indexes[$indexKey] = $index;
+        }
+
+        return $indexes;
+    });
+
+    respond(204);
+}
+
+if (\preg_match('#^/v1/tablesdb/[^/]+/tables/[^/]+/indexes(?:/([^/]+))?$#', $path, $matched) === 1) {
+    $key = $matched[1] ?? '';
+
+    if ($method === 'POST' && $key === '') {
+        createIndex();
+    }
+
+    if ($method === 'GET' && $key === '') {
+        $indexes = storedIndexes();
+
+        respond(200, [
+            'total' => \count($indexes),
+            'indexes' => \array_map(
+                static fn (string $indexKey): array => indexDocument($indexKey, $indexes[$indexKey]),
+                \array_keys($indexes)
+            ),
+        ]);
+    }
+
+    if ($method === 'GET') {
+        $indexes = storedIndexes();
+
+        if (!isset($indexes[$key])) {
+            indexNotFound();
+        }
+
+        respond(200, indexDocument($key, $indexes[$key]));
+    }
+
+    if ($method === 'DELETE' && $key !== '') {
+        deleteIndex($key);
+    }
+}
+
+if (
+    $method === 'POST'
+    && \preg_match('#^/v1/tablesdb/[^/]+/tables/[^/]+/columns/string$#', $path) === 1
+) {
+    $body = body();
+
+    respond(202, [
+        'key' => (string) ($body['key'] ?? ''),
+        'type' => 'string',
+        'size' => (int) ($body['size'] ?? 0),
+        'status' => 'available',
+        'required' => (bool) ($body['required'] ?? false),
+    ]);
+}
+
+if (
+    $method === 'DELETE'
+    && \preg_match('#^/v1/tablesdb/[^/]+/tables/[^/]+/columns/([^/]+)$#', $path, $matched) === 1
+) {
+    deleteColumn($matched[1]);
+}
+
+/**
  * @var array<int, array{0: string, 1: string, 2: int, 3: array<string, mixed>|null}>
  *      [method, path pattern, status, body] — `*` matches one path segment.
  */
@@ -325,7 +594,6 @@ $routes = [
     ['GET', '/v1/tablesdb/*/tables', 200, ['total' => 1, 'tables' => [['$id' => 'playground-table', 'name' => 'table']]]],
     ['POST', '/v1/tablesdb/*/tables', 201, ['$id' => 'playground-table', 'name' => 'table']],
     ['DELETE', '/v1/tablesdb/*/tables/*', 204, null],
-    ['POST', '/v1/tablesdb/*/tables/*/columns/string', 202, ['key' => 'name', 'type' => 'string', 'size' => 255, 'status' => 'available', 'required' => true]],
     ['POST', '/v1/tablesdb/*/tables/*/columns/integer', 202, ['key' => 'release_year', 'type' => 'integer', 'status' => 'available', 'required' => true]],
     ['POST', '/v1/tablesdb/*/tables/*/rows', 201, ['$id' => 'playground-row', 'name' => 'Spider Man', 'release_year' => 1920]],
 

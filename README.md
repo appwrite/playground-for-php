@@ -28,6 +28,8 @@ This playground doesn't include any PHP best practices but rather intended to sh
 * Create Table
 * List Tables
 * Add Row
+* Create, List and Delete Indexes
+* Delete an Indexed Column
 * Upload File
 * List Files
 * Create User
@@ -62,6 +64,36 @@ options:
   mistake in the other direction.
 
 `countUsersPastTheCountLimit()` in `playground.php` shows all three.
+
+### Indexes
+
+Index work is asynchronous. `createIndex()`, `deleteIndex()` and
+`deleteColumn()` are answered as accepted, and a worker does the schema work
+afterwards, so reading the index back is the only report of how that work went.
+Besides `available` there are two answers to be ready for:
+
+* `failed` — the worker could not build the index. A unique index over rows that
+  already repeat a value is the usual case, and only the worker finds that out. A
+  failed index is a document in the table's index list, not nothing, and clearing
+  it away is a `deleteIndex()` call like any other.
+* `stuck` — the worker gave up on the delete. Before
+  [appwrite/appwrite#15471](https://github.com/appwrite/appwrite/pull/15471) this
+  was the answer for deleting an index the schema did not hold: an index that
+  never finished creating had nothing to drop, the worker read that as a failure,
+  and every retry took the same path — so the index could not be removed at all.
+  The worker now treats a missing schema index as the state the delete asked for
+  and drops the document anyway, which also means a `stuck` index left over from
+  an older server goes on being asked again.
+
+The same PR fixed the other end of it: dropping a column an index covers prunes
+the column out of the index, and the length and the order at its position go with
+it. They used to be pruned by value, so an index whose lengths repeat lost every
+length equal to the removed one, leaving the index covering more columns than it
+had lengths for and the table refusing later column changes with "Invalid index
+lengths".
+
+`manageIndexes()` in `playground.php` builds an index, clears away one the worker
+could not build, and drops an indexed column.
 
 ### Abuse limits
 
@@ -102,8 +134,14 @@ user, and that the `429` reaches the caller in a shape it can act on
 (`tests/code-guesses.php`). It then lists a project holding more users than a
 `total` counts to, checking that the clamped total is read as a floor, that the
 rows past it are reachable with a cursor, and that `total: false` answers `0`
-without hiding the rows (`tests/list-total.php`). No Appwrite instance and no
-network access are needed.
+without hiding the rows (`tests/list-total.php`). Last it drives the index
+routes, checking that an index the worker could not build reads as `failed`, that
+one `deleteIndex()` clears it away, and that dropping an indexed column leaves
+the index carrying one length and one order per remaining column — against a stub
+behaving as the worker does since appwrite/appwrite#15471, and against one
+behaving as it did before, so the checks are known to notice
+(`tests/index-cleanup.php`). No Appwrite instance and no network access are
+needed.
 
 ## Contributing
 

@@ -28,6 +28,7 @@ $expectedCalls = [
     'api.createTable',
     'api.listTables',
     'api.addRow',
+    'api.manageIndexes',
     'api.deleteTable',
     'api.deleteDatabase',
     'api.createBucket',
@@ -59,6 +60,24 @@ $expectedRequests = [
     ['POST', '/v1/tablesdb/playground-db/tables/playground-table/columns/integer'],
     ['GET', '/v1/tablesdb/playground-db/tables'],
     ['POST', '/v1/tablesdb/playground-db/tables/playground-table/rows'],
+    // Indexes: two columns to index, the index over them, then the unique index
+    // the worker cannot build — each read back once, because the stub settles an
+    // index as soon as it is created.
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/columns/string'],
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/columns/string'],
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/indexes'],
+    ['GET', '/v1/tablesdb/playground-db/tables/playground-table/indexes/pair'],
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/rows'],
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/rows'],
+    ['POST', '/v1/tablesdb/playground-db/tables/playground-table/indexes'],
+    ['GET', '/v1/tablesdb/playground-db/tables/playground-table/indexes/uniqueFirst'],
+    // The delete appwrite/appwrite#15471 made go through, and the read that
+    // finds the index gone.
+    ['DELETE', '/v1/tablesdb/playground-db/tables/playground-table/indexes/uniqueFirst'],
+    ['GET', '/v1/tablesdb/playground-db/tables/playground-table/indexes/uniqueFirst'],
+    ['DELETE', '/v1/tablesdb/playground-db/tables/playground-table/columns/first'],
+    ['GET', '/v1/tablesdb/playground-db/tables/playground-table/indexes/pair'],
+    ['GET', '/v1/tablesdb/playground-db/tables/playground-table/indexes'],
     ['DELETE', '/v1/tablesdb/playground-db/tables/playground-table'],
     ['DELETE', '/v1/tablesdb/playground-db'],
     ['POST', '/v1/storage/buckets'],
@@ -126,6 +145,15 @@ try {
      */
     if (!\str_contains($output, '5,000+')) {
         $failures[] = 'The playground printed a clamped list total without marking it as a floor';
+    }
+
+    /**
+     * An index the worker could not build is deleted by the first attempt since
+     * appwrite/appwrite#15471, instead of being left behind as `stuck`. See
+     * `tests/index-cleanup.php` for the contract itself.
+     */
+    if (!\str_contains($output, '[failedIndexDeleted] => 1')) {
+        $failures[] = 'The playground did not get the failed index deleted';
     }
 
     $remaining = $expectedCalls;

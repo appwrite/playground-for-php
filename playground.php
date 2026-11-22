@@ -5,8 +5,10 @@ use Appwrite\AppwriteException;
 use Appwrite\Client;
 use Appwrite\Enums\ExecutionMethod;
 use Appwrite\Enums\Runtime;
+use Appwrite\Enums\TablesDBIndexType;
 use Appwrite\ID;
 use Appwrite\InputFile;
+use Appwrite\Models\ColumnIndex;
 use Appwrite\Permission;
 use Appwrite\Query;
 use Appwrite\Role;
@@ -42,6 +44,10 @@ $account = new Account($client);
  * - deleteTable
  * - listTables
  * - addRow
+ * - createIndex
+ * - listIndexes
+ * - deleteIndex
+ * - deleteColumn
  * - uploadFile
  * - listFiles
  * - deleteFile
@@ -172,6 +178,208 @@ function addRow(): array
     return [
         'call' => 'api.addRow',
         'response' => $response,
+    ];
+}
+
+/**
+ * How long to wait for the index worker to settle an index. An index create or
+ * delete is answered before the worker has run, so the status that comes back
+ * from the route itself is `processing` or `deleting`.
+ */
+const INDEX_WAIT_SECONDS = 30;
+
+/**
+ * How long to leave between reads while waiting.
+ */
+const INDEX_POLL_SECONDS = 1;
+
+/**
+ * The statuses the index worker has finished with. `processing` and `deleting`
+ * are the two it is still moving an index off.
+ */
+const INDEX_SETTLED = ['available', 'failed', 'stuck'];
+
+/**
+ * Length indexed from each of the string columns below.
+ */
+const INDEX_LENGTH = 64;
+
+/**
+ * Read an index back until the worker has settled it, or until it is gone.
+ *
+ * `null` means the index no longer exists, which is what a delete that went
+ * through looks like from here: the route answers before the worker runs, so the
+ * only way to know a delete finished is that the index stopped being readable.
+ *
+ * Gives up after `INDEX_WAIT_SECONDS` and hands back whatever the index reads
+ * then, so a worker that never got to it is reported rather than waited on.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesdb#getIndex
+ * @throws Exception
+ */
+function waitForIndex(string $key): ?ColumnIndex
+{
+    global $tablesDB, $databaseId, $tableId;
+
+    $deadline = \microtime(true) + INDEX_WAIT_SECONDS;
+
+    while (true) {
+        try {
+            $index = $tablesDB->getIndex($databaseId, $tableId, $key);
+        } catch (AppwriteException $e) {
+            if ($e->getCode() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        if (\in_array($index->status, INDEX_SETTLED, true) || \microtime(true) >= $deadline) {
+            return $index;
+        }
+
+        \sleep(INDEX_POLL_SECONDS);
+    }
+}
+
+/**
+ * Does the index still carry the length and the order that belong to each of its
+ * columns?
+ *
+ * A length and an order are positional: the nth one describes the nth column. An
+ * index created with them — like the one below — carries one of each per column,
+ * so that is what reading it back has to show. (An index created without them
+ * answers with empty lists instead, where there is nothing to line up.)
+ */
+function indexKeepsOneLengthPerColumn(ColumnIndex $index): bool
+{
+    return \count($index->lengths) === \count($index->columns)
+        && \count($index->orders ?? []) === \count($index->columns);
+}
+
+/**
+ * Build indexes, clear away the one the worker could not build, and drop a
+ * column an index covers.
+ *
+ * Both halves of this are asynchronous: `createIndex()`, `deleteIndex()` and
+ * `deleteColumn()` are answered as accepted, and a worker does the schema work
+ * afterwards. So the status an index reads is the only report of how that work
+ * went, and there are two outcomes a caller has to be ready for:
+ *
+ * - `failed` — the worker could not build the index. The unique index below is
+ *   one: the rows already repeat a value, which only the worker finds out. A
+ *   failed index is not nothing, it is a document sitting in the table's index
+ *   list, and clearing it away is a `deleteIndex()` call like any other.
+ * - `stuck` — the worker gave up on the delete. Before
+ *   [appwrite/appwrite#15471](https://github.com/appwrite/appwrite/pull/15471)
+ *   this was the answer for deleting an index the schema did not hold: an index
+ *   that never finished creating had nothing to drop, the worker read that as a
+ *   failure, and every retry took the same path — leaving the index permanently
+ *   undeletable. The worker now treats a missing schema index as the state the
+ *   delete asked for and removes the document anyway, so a failed index goes on
+ *   the first attempt and a retry of a half-done delete finishes it.
+ *
+ * The same PR fixed the other end of the asynchrony: dropping a column that an
+ * index covers prunes the column out of the index, and the length and the order
+ * at its position go with it. They used to be pruned by value, which for an
+ * index whose lengths repeat dropped every length equal to the removed one and
+ * left the index covering more columns than it had lengths for — a table that
+ * then refused later column changes with "Invalid index lengths".
+ *
+ * So: read an index back after asking for any of this, and treat `failed` and
+ * `stuck` as the answers they are rather than waiting for `available`.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesdb#createIndex
+ * @throws Exception
+ */
+function manageIndexes(): array
+{
+    global $tablesDB, $databaseId, $tableId;
+
+    foreach (['first', 'second'] as $column) {
+        $tablesDB->createStringColumn(
+            $databaseId,
+            $tableId,
+            key: $column,
+            size: 128,
+            required: false,
+        );
+    }
+
+    // Equal lengths and equal orders, which is what pruning by value used to
+    // lose: there is no telling the first 64 from the second one by value.
+    $tablesDB->createIndex(
+        $databaseId,
+        $tableId,
+        key: 'pair',
+        type: TablesDBIndexType::KEY(),
+        columns: ['first', 'second'],
+        orders: ['ASC', 'ASC'],
+        lengths: [INDEX_LENGTH, INDEX_LENGTH],
+    );
+
+    $pair = waitForIndex('pair');
+
+    // Two rows repeating a value, so the unique index below has something to
+    // trip over. The route accepts it either way; the worker is where it fails.
+    foreach (['Duplicate One', 'Duplicate Two'] as $name) {
+        $tablesDB->createRow(
+            $databaseId,
+            $tableId,
+            rowId: ID::unique(),
+            data: [
+                'name' => $name,
+                'release_year' => 1999,
+                'first' => 'duplicate',
+            ],
+        );
+    }
+
+    $tablesDB->createIndex(
+        $databaseId,
+        $tableId,
+        key: 'uniqueFirst',
+        type: TablesDBIndexType::UNIQUE(),
+        columns: ['first'],
+    );
+
+    $failed = waitForIndex('uniqueFirst');
+
+    // Clearing away an index the worker never built. One call, then read it
+    // back: gone is `null`, and a `stuck` left behind would be the old bug.
+    $tablesDB->deleteIndex($databaseId, $tableId, 'uniqueFirst');
+
+    $afterDelete = waitForIndex('uniqueFirst');
+
+    // Dropping a column the `pair` index covers. The index survives over the
+    // column that remains, carrying that column's own length and order.
+    $tablesDB->deleteColumn($databaseId, $tableId, 'first');
+
+    $pruned = waitForIndex('pair');
+
+    $indexes = $tablesDB->listIndexes($databaseId, $tableId);
+
+    return [
+        'call' => 'api.manageIndexes',
+        'response' => [
+            'pairStatus' => $pair?->status,
+            // What the worker answers for an index it cannot build, and the
+            // reason it gives for it.
+            'failedStatus' => $failed?->status,
+            'failedError' => $failed?->error,
+            // False before #15471: the delete left the index behind as `stuck`,
+            // and asking again did the same.
+            'failedIndexDeleted' => $afterDelete === null,
+            'failedIndexStatusAfterDelete' => $afterDelete?->status,
+            'prunedColumns' => $pruned?->columns,
+            'prunedLengths' => $pruned?->lengths,
+            'prunedOrders' => $pruned?->orders,
+            'prunedIndexAligned' => $pruned !== null && indexKeepsOneLengthPerColumn($pruned),
+            'remainingIndexes' => \array_map(
+                static fn (ColumnIndex $index): string => $index->key,
+                $indexes->indexes
+            ),
+        ],
     ];
 }
 
@@ -751,6 +959,7 @@ $methods = [
     'createTable',
     'listTables',
     'addRow',
+    'manageIndexes',
     'deleteTable',
     'deleteDatabase',
     'createBucket',
