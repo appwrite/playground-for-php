@@ -9,6 +9,12 @@
  * endpoints it means to and that the SDK can hydrate what comes back — without
  * needing a running Appwrite.
  *
+ * The list routes answer a `total` the way the server does: counted only as far
+ * as `COUNT_LIMIT`, so a project holding more rows than that is reported as
+ * holding exactly that many. That floor is what appwrite/appwrite#15496 taught
+ * the console to read as `5,000+`, and what a server reading the same list has
+ * to page past to learn the real number. See `tests/list-total.php`.
+ *
  * The routes that confirm a secret are the ones with state behind them. They
  * count wrong guesses per project, route and user in the file named by
  * `STUB_STATE`, the way the server keys those abuse limits, and answer `429`
@@ -29,6 +35,31 @@ const GUESS_LIMIT = 10;
  */
 const VALID_SECRET = 'playground-secret';
 
+/**
+ * How far a list route counts before it gives up: the server's
+ * `APP_LIMIT_COUNT`. A `total` that reaches this is a floor — "at least this
+ * many rows" — because the count stopped there, not because the list does.
+ */
+const COUNT_LIMIT = 5000;
+
+/**
+ * Users the stub's project holds. More than `COUNT_LIMIT`, so every count of
+ * them comes back clamped and only paging to the end finds the real number.
+ */
+const USER_POPULATION = 5123;
+
+/**
+ * Users a `search` term matches: few enough to be counted in full, so that
+ * total is exact and must not be dressed up as a floor.
+ */
+const SEARCHED_USER_POPULATION = 7;
+
+/**
+ * Page size a list uses when the caller sends no `Query::limit`: the server's
+ * `APP_LIMIT_LIST_DEFAULT`.
+ */
+const LIST_LIMIT_DEFAULT = 25;
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = \parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 $project = $_SERVER['HTTP_X_APPWRITE_PROJECT'] ?? '';
@@ -44,6 +75,9 @@ if (\is_string($log) && $log !== '') {
             // Whether the caller held an API key, which used to exempt it from
             // the limits on the routes below.
             'keyed' => ($_SERVER['HTTP_X_APPWRITE_KEY'] ?? '') !== '',
+            // How the caller asked for its page, so a test can tell a cursor
+            // walk from offset paging.
+            'queries' => queries(),
         ]) . "\n",
         FILE_APPEND | LOCK_EX
     );
@@ -198,6 +232,90 @@ if ($method === 'PUT' && $path === '/v1/account/recovery/otp') {
 }
 
 /**
+ * The `queries[]` params the SDK sends, decoded as `method => values`.
+ *
+ * @return array<string, array<int, mixed>>
+ */
+function queries(): array
+{
+    $parsed = [];
+
+    foreach ((array) ($_GET['queries'] ?? []) as $query) {
+        $decoded = \json_decode((string) $query, true);
+
+        if (\is_array($decoded) && isset($decoded['method'])) {
+            $parsed[(string) $decoded['method']] = (array) ($decoded['values'] ?? []);
+        }
+    }
+
+    return $parsed;
+}
+
+/**
+ * The id of the nth user, counting from one. Ids sort the way the rows do, so a
+ * cursor is just a position in the list.
+ */
+function userId(int $position): string
+{
+    return \sprintf('user-%04d', $position);
+}
+
+/**
+ * `GET /v1/users`: a page of users, and a `total` counted only as far as
+ * `COUNT_LIMIT`.
+ *
+ * This is the client-visible half of appwrite/appwrite#15496. The count has a
+ * budget, so for a project holding more users than the budget the `total` is
+ * the budget: the real number is not something the route knows, and only paging
+ * to the end of the list finds it. `total=false` asks for no count at all,
+ * which answers `0` — "not counted", rather than "no users".
+ */
+function listUsersPage(): never
+{
+    $queries = queries();
+    $population = ($_GET['search'] ?? '') === '' ? USER_POPULATION : SEARCHED_USER_POPULATION;
+    $limit = (int) ($queries['limit'][0] ?? LIST_LIMIT_DEFAULT);
+    $offset = (int) ($queries['offset'][0] ?? 0);
+    $cursor = $queries['cursorAfter'][0] ?? null;
+
+    // A cursor names the last row the caller saw, so its page starts after that
+    // row — plus whatever offset was asked for on top of it.
+    if ($cursor !== null) {
+        $position = \str_starts_with((string) $cursor, 'user-')
+            ? (int) \substr((string) $cursor, \strlen('user-'))
+            : 0;
+
+        if ($position < 1 || $position > $population) {
+            respond(400, [
+                'message' => "User '{$cursor}' for the 'cursor' value not found.",
+                'type' => 'general_cursor_not_found',
+                'code' => 400,
+            ]);
+        }
+
+        $offset += $position;
+    }
+
+    $rows = [];
+    $end = \min($offset + \max($limit, 0), $population);
+
+    for ($position = $offset + 1; $position <= $end; $position++) {
+        $rows[] = ['$id' => userId($position), 'prefs' => []];
+    }
+
+    respond(200, [
+        'total' => \in_array($_GET['total'] ?? '1', ['0', 'false'], true)
+            ? 0
+            : \min($population, COUNT_LIMIT),
+        'users' => $rows,
+    ]);
+}
+
+if ($method === 'GET' && $path === '/v1/users') {
+    listUsersPage();
+}
+
+/**
  * @var array<int, array{0: string, 1: string, 2: int, 3: array<string, mixed>|null}>
  *      [method, path pattern, status, body] — `*` matches one path segment.
  */
@@ -217,7 +335,6 @@ $routes = [
     ['POST', '/v1/storage/buckets/*/files', 201, ['$id' => 'playground-file', 'name' => 'test.txt']],
     ['DELETE', '/v1/storage/buckets/*/files/*', 204, null],
 
-    ['GET', '/v1/users', 200, ['total' => 1, 'users' => [['$id' => 'playground-user', 'prefs' => []]]]],
     ['POST', '/v1/users', 201, ['$id' => 'playground-user', 'email' => 'email@example.com', 'prefs' => []]],
     ['POST', '/v1/users/*/tokens', 201, ['$id' => 'playground-token', 'userId' => 'playground-user', 'secret' => VALID_SECRET]],
 

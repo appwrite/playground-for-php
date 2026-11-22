@@ -32,6 +32,7 @@ This playground doesn't include any PHP best practices but rather intended to sh
 * List Files
 * Create User
 * List User
+* Count Users Past the Reported Total
 * Request Password Recovery
 * Log a User In From a Token Secret
 * Create Function, Deployment and Executions
@@ -39,6 +40,28 @@ This playground doesn't include any PHP best practices but rather intended to sh
 Collections and documents were renamed to tables and rows in Appwrite 1.8. The
 playground uses the `TablesDB` service; the older `Databases` service still
 exists in the SDK, but every one of its methods is deprecated.
+
+### List totals
+
+A list `total` is a count with a budget. The server counts at most
+`APP_LIMIT_COUNT` (5,000) rows and answers with whatever it reached, so a total
+sitting at that number means "at least 5,000", not "5,000": a project with
+50,000 users reports 5,000, and the 200 pages of 25 that number divides into end
+on a page that is not the last one.
+[appwrite/appwrite#15496](https://github.com/appwrite/appwrite/pull/15496) fixed
+the console's half of this — a clamped total now reads `5,000+`, and no page
+count is derived from it. Code reading the same lists has the same three
+options:
+
+* report the number as the floor it is (`5,000+`), which costs nothing;
+* page to the end of the list for the exact number, asking for each next page
+  with `Query::cursorAfter()` so it starts where the last one ended instead of
+  re-scanning the rows ahead of it;
+* ask for no count at all with `total: false`, which skips the count query. The
+  `0` that answers means "not counted" — reading it as "no users" is the same
+  mistake in the other direction.
+
+`countUsersPastTheCountLimit()` in `playground.php` shows all three.
 
 ### Abuse limits
 
@@ -76,8 +99,11 @@ every call succeeded and hit the endpoint it was supposed to
 (`tests/smoke.php`), and then drives the abuse-limited confirmation routes with
 an API key to check that wrong guesses are counted for it, that the count is per
 user, and that the `429` reaches the caller in a shape it can act on
-(`tests/code-guesses.php`). No Appwrite instance and no network access are
-needed.
+(`tests/code-guesses.php`). It then lists a project holding more users than a
+`total` counts to, checking that the clamped total is read as a floor, that the
+rows past it are reachable with a cursor, and that `total: false` answers `0`
+without hiding the rows (`tests/list-total.php`). No Appwrite instance and no
+network access are needed.
 
 ## Contributing
 
