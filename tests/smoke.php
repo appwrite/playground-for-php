@@ -37,6 +37,7 @@ $expectedCalls = [
     'api.deleteBucket',
     'api.createUser',
     'api.listUsers',
+    'api.countUsersPastTheCountLimit',
     'api.createRecovery',
     'api.createSessionFromToken',
     'api.createFunction',
@@ -66,6 +67,10 @@ $expectedRequests = [
     ['DELETE', '/v1/storage/buckets/playground-bucket/files/playground-file'],
     ['DELETE', '/v1/storage/buckets/playground-bucket'],
     ['POST', '/v1/users'],
+    ['GET', '/v1/users'],
+    // Counting the users past the counted total: a page at a time until a short
+    // page ends the list, then one more list that asks for no count at all.
+    ...\array_fill(0, 6, ['GET', '/v1/users']),
     ['GET', '/v1/users'],
     ['POST', '/v1/account/recovery'],
     ['POST', '/v1/users'],
@@ -111,6 +116,16 @@ try {
 
     if (\str_contains($output, 'Stub has no route')) {
         $failures[] = 'The playground called a route the stub does not know';
+    }
+
+    /**
+     * The stub's project holds more users than a list `total` counts to, so the
+     * number the playground gets back is a floor. appwrite/appwrite#15496 is
+     * about not printing such a number as if it were the count — see
+     * `tests/list-total.php` for the contract itself.
+     */
+    if (!\str_contains($output, '5,000+')) {
+        $failures[] = 'The playground printed a clamped list total without marking it as a floor';
     }
 
     $remaining = $expectedCalls;

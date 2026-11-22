@@ -26,7 +26,7 @@
     "php": ">=8.5",
     "ext-curl": "*",
     "ext-json": "*",
-    "appwrite/appwrite": "^32.2.0"
+    "appwrite/appwrite": "^32.4.0"
   },
   "config": {
     "optimize-autoloader": true,
@@ -35,7 +35,8 @@
   "scripts": {
     "test": [
       "@php tests/smoke.php",
-      "@php tests/code-guesses.php"
+      "@php tests/code-guesses.php",
+      "@php tests/list-total.php"
     ]
   },
   "support": {

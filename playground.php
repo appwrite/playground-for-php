@@ -8,6 +8,7 @@ use Appwrite\Enums\Runtime;
 use Appwrite\ID;
 use Appwrite\InputFile;
 use Appwrite\Permission;
+use Appwrite\Query;
 use Appwrite\Role;
 use Appwrite\Services\Account;
 use Appwrite\Services\Functions;
@@ -46,6 +47,7 @@ $account = new Account($client);
  * - deleteFile
  * - createUser
  * - listUser
+ * - listUsers past the counted total
  * - getAccount
  * - createRecovery
  * - createSessionFromToken
@@ -362,7 +364,23 @@ function createUser(): array
 }
 
 /**
+ * How far a list route counts before it gives up and answers with what it
+ * reached: the server's `APP_LIMIT_COUNT`.
+ */
+const APP_LIMIT_COUNT = 5000;
+
+/**
+ * Page size for the count below. Counting wants the biggest page it can get —
+ * every page is a round trip — unlike a page someone is going to look at.
+ */
+const COUNT_PAGE_SIZE = 1000;
+
+/**
  * Get a list of all the project users.
+ *
+ * The `total` that comes back is a count with a budget, not a count: see
+ * `countUsersPastTheCountLimit()` below before showing it to anyone or paging
+ * with it.
  *
  * @see https://appwrite.io/docs/references/cloud/server-php/users#list
  * @throws Exception
@@ -376,6 +394,82 @@ function listUsers(): array
     return [
         'call' => 'api.listUsers',
         'response' => $response,
+    ];
+}
+
+/**
+ * Count the project's users, including the ones past the point the server
+ * stopped counting.
+ *
+ * A list `total` is a count with a budget: the server counts at most
+ * `APP_LIMIT_COUNT` (5,000) rows and answers with whatever it reached, so a
+ * total sitting at that number means "at least 5,000 users", not "5,000 users".
+ * A project with 50,000 of them reports 5,000, and the 200 pages of 25 that
+ * number divides into end on a page that is not the last one.
+ *
+ * [appwrite/appwrite#15496](https://github.com/appwrite/appwrite/pull/15496)
+ * fixed the console's half of this: a clamped total now reads `5,000+`, and no
+ * page count is derived from it. A server reading the same list has the same
+ * three options:
+ *
+ * - report the number as the floor it is (`5,000+`), which costs nothing;
+ * - page to the end of the list for the exact number, which the count will not
+ *   give. The walk below asks for the next page with `Query::cursorAfter()`
+ *   rather than a growing `Query::offset()`, so each page starts where the last
+ *   one ended instead of re-scanning every row ahead of it;
+ * - ask for no count at all with `total: false`, which skips the count query.
+ *   The `0` that answers means "not counted"; reading it as "no users" is the
+ *   same mistake in the other direction.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/users#list
+ * @throws Exception
+ */
+function countUsersPastTheCountLimit(): array
+{
+    global $users;
+
+    $page = $users->list(queries: [Query::limit(COUNT_PAGE_SIZE)]);
+    $reported = $page->total;
+    $requests = 1;
+
+    // Under the budget the count is exact, so it is the answer. At it, paging
+    // to the end of the list is the only way to learn the real number: a full
+    // page means there is more list past what was counted.
+    $exact = $reported;
+
+    if ($reported >= APP_LIMIT_COUNT) {
+        $exact = \count($page->users);
+
+        while (\count($page->users) === COUNT_PAGE_SIZE) {
+            $rows = $page->users;
+
+            $page = $users->list(queries: [
+                Query::limit(COUNT_PAGE_SIZE),
+                Query::cursorAfter($rows[\array_key_last($rows)]->id),
+            ]);
+
+            $exact += \count($page->users);
+            $requests++;
+        }
+    }
+
+    $uncounted = $users->list(queries: [Query::limit(1)], total: false);
+
+    return [
+        'call' => 'api.countUsersPastTheCountLimit',
+        'response' => [
+            'reportedTotal' => $reported,
+            // How the console shows this number since #15496.
+            'reportedTotalLabel' => $reported >= APP_LIMIT_COUNT
+                ? \number_format($reported) . '+'
+                : \number_format($reported),
+            'exactTotal' => $exact,
+            'requestsToCount' => $requests,
+            // `total: false` means no count was taken, not that there is nothing
+            // to count: rows still come back.
+            'uncountedTotal' => $uncounted->total,
+            'uncountedRows' => \count($uncounted->users),
+        ],
     ];
 }
 
@@ -666,6 +760,7 @@ $methods = [
     'deleteBucket',
     'createUser',
     'listUsers',
+    'countUsersPastTheCountLimit',
     'createRecovery',
     'createSessionFromToken',
     'createFunction',
