@@ -40,6 +40,7 @@ $expectedCalls = [
     'api.countUsersPastTheCountLimit',
     'api.createRecovery',
     'api.createSessionFromToken',
+    'api.linkIdentityFromIdToken',
     'api.createFunction',
     'api.createDeployment',
     'api.createExecution', // sync
@@ -76,6 +77,9 @@ $expectedRequests = [
     ['POST', '/v1/users'],
     ['POST', '/v1/users/playground-user/tokens'],
     ['POST', '/v1/account/sessions/token'],
+    // Linking a provider identity, and reading back who holds its address.
+    ['POST', '/v1/account/sessions/id-token'],
+    ['GET', '/v1/users/identities'],
     ['POST', '/v1/functions'],
     ['POST', '/v1/functions/playground-function/deployments'],
     ['POST', '/v1/functions/playground-function/executions'],
@@ -126,6 +130,17 @@ try {
      */
     if (!\str_contains($output, '5,000+')) {
         $failures[] = 'The playground printed a clamped list total without marking it as a floor';
+    }
+
+    /**
+     * The stub's project already holds the address the playground's sign-in
+     * reports, under an account of its own, so that link is refused. What
+     * appwrite/appwrite#15300 is about is that the address comes out of it held
+     * by one account either way — see `tests/identity-email.php` for the
+     * contract itself.
+     */
+    if (!\str_contains($output, '[identitiesHoldingIt] => 1')) {
+        $failures[] = 'The playground read more than one identity holding the provider email';
     }
 
     $remaining = $expectedCalls;

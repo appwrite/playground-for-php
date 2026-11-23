@@ -4,9 +4,11 @@ require __DIR__ . '/global.inc.php';
 use Appwrite\AppwriteException;
 use Appwrite\Client;
 use Appwrite\Enums\ExecutionMethod;
+use Appwrite\Enums\IdTokenProvider;
 use Appwrite\Enums\Runtime;
 use Appwrite\ID;
 use Appwrite\InputFile;
+use Appwrite\Models\Identity;
 use Appwrite\Permission;
 use Appwrite\Query;
 use Appwrite\Role;
@@ -51,6 +53,7 @@ $account = new Account($client);
  * - getAccount
  * - createRecovery
  * - createSessionFromToken
+ * - createIdTokenSession, and the identity it links
  */
 
 /**
@@ -599,6 +602,131 @@ function createSessionFromToken(): array
 }
 
 /**
+ * The address the provider reports for the account being signed in with. The
+ * demo below presents it from a provider account the project has never seen, so
+ * the link it asks for is the one appwrite/appwrite#15300 is about.
+ */
+const PROVIDER_EMAIL = 'shared@example.com';
+
+/**
+ * An unsigned stand-in for the id token a provider hands a client.
+ *
+ * A real caller passes on the token the provider issued and nothing else:
+ * Appwrite verifies it against the provider's keys and reads the subject and
+ * the verified address out of it, so a token nobody signed is refused with
+ * `401`. This exists so the playground has something to send without a Google
+ * or Apple client in the loop — see `linkIdentityFromIdToken()` for what
+ * happens when you run it against a real instance.
+ */
+function providerIdToken(string $subject, string $email): string
+{
+    $segment = static fn (array $claims): string => \rtrim(
+        \strtr(\base64_encode((string) \json_encode($claims)), '+/', '-_'),
+        '='
+    );
+
+    return $segment(['alg' => 'none', 'typ' => 'JWT'])
+        . '.'
+        . $segment(['sub' => $subject, 'email' => $email, 'email_verified' => true])
+        . '.';
+}
+
+/**
+ * Sign in with a provider id token, and handle the link being refused.
+ *
+ * A native sign-in hands Appwrite the id token the provider gave the client.
+ * The first time a provider account is seen, Appwrite links it to a user as an
+ * identity — the existing account holding that verified address if there is
+ * one, otherwise a new account it creates for it.
+ *
+ * A provider email is only ever held by the identities of a single user. It is
+ * not a unique index, because one user may well hold several identities
+ * reporting the same address (the same person signing in with Google and with
+ * Apple), so the rule is enforced by the link itself; and
+ * [appwrite/appwrite#15300](https://github.com/appwrite/appwrite/pull/15300)
+ * made it hold under concurrency. Reading the ownership before the insert is a
+ * time-of-check race: two sign-ins presenting the same verified address at the
+ * same moment both came up clean and both wrote, leaving one address with two
+ * owners — two accounts a later sign-in could land on either of. The link now
+ * writes first and reads the ownership again afterwards, so the one that lost
+ * drops the row it wrote; a refused link also no longer leaves behind the
+ * account it had just created for the sign-in.
+ *
+ * What that means for code like this one:
+ *
+ * - the refusal is `400`, and deliberately the generic one — a `400` naming the
+ *   conflict would tell whoever presented the token that some other account
+ *   holds the address. So there is nothing to show the person signing in beyond
+ *   "that did not work", and nothing to retry: a second attempt is refused the
+ *   same way, and `409` on these routes means the provider account itself is
+ *   already linked elsewhere;
+ * - the address has one owner either way, which `users->listIdentities()` shows
+ *   and the read below checks. If that owner is a stale identity — an account
+ *   nobody uses any more, left over from an address that changed hands — a
+ *   server holding an API key can clear the way with
+ *   `users->deleteIdentity()`, after which the link goes through.
+ *
+ * Against a real instance the token below is refused with `401
+ * user_invalid_token` long before any of this, since no provider signed it; the
+ * read that follows works all the same.
+ *
+ * @see https://appwrite.io/docs/references/cloud/client-php/account#createIdTokenSession
+ * @throws Exception
+ */
+function linkIdentityFromIdToken(): array
+{
+    global $account, $users;
+
+    try {
+        $session = $account->createIdTokenSession(
+            provider: IdTokenProvider::GOOGLE(),
+            idToken: providerIdToken('google-playground', PROVIDER_EMAIL),
+            name: 'Playground',
+        );
+
+        $linked = [
+            'linked' => true,
+            'sessionId' => $session->id,
+            'userId' => $session->userId,
+        ];
+    } catch (AppwriteException $e) {
+        if (!\in_array($e->getCode(), [400, 401, 409], true)) {
+            throw $e;
+        }
+
+        // 400: the link did not hold — show "could not sign you in" and stop.
+        // 401: the provider token was not accepted — start the sign-in over.
+        // 409: that provider account is linked to a different user already.
+        $linked = [
+            'linked' => false,
+            'code' => $e->getCode(),
+            'type' => $e->getType(),
+            'message' => $e->getMessage(),
+        ];
+    }
+
+    // Who holds the address now. One owner, whichever way the link went: the
+    // account that already had it, or the one this sign-in linked. Never both.
+    $identities = $users->listIdentities(
+        queries: [Query::equal('providerEmail', [PROVIDER_EMAIL])]
+    );
+
+    $owners = \array_values(\array_unique(\array_map(
+        static fn (Identity $identity): string => $identity->userId,
+        $identities->identities
+    )));
+
+    return [
+        'call' => 'api.linkIdentityFromIdToken',
+        'response' => $linked + [
+            'providerEmail' => PROVIDER_EMAIL,
+            'identitiesHoldingIt' => $identities->total,
+            'accountsHoldingIt' => $owners,
+        ],
+    ];
+}
+
+/**
  * Create a function
  *
  * @see https://appwrite.io/docs/references/cloud/server-php/functions#create
@@ -763,6 +891,7 @@ $methods = [
     'countUsersPastTheCountLimit',
     'createRecovery',
     'createSessionFromToken',
+    'linkIdentityFromIdToken',
     'createFunction',
     'createDeployment',
     'createSyncExecution',
