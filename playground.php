@@ -39,6 +39,7 @@ $account = new Account($client);
  * - createDatabase
  * - deleteDatabase
  * - createTable
+ * - createTable past the row limit
  * - deleteTable
  * - listTables
  * - addRow
@@ -192,6 +193,111 @@ function deleteTable(): array
     return [
         'call' => 'api.deleteTable',
         'response' => $response,
+    ];
+}
+
+/**
+ * Create a table whose columns do not fit a row, and read what comes back.
+ *
+ * A table's columns have to fit the row its database gives it — 65,535 bytes,
+ * of which the internal columns (`_uid`, the timestamps, `_permissions` and
+ * friends) already spend 1,067. A string column spends four bytes per
+ * character for as long as it stays in the row, so the five 4,000-character
+ * ones below ask for 80,010 bytes of the 64,468 that are left.
+ *
+ * Appwrite used to answer that with `table_limit_exceeded`: "The maximum number
+ * of tables for database '...' has been reached" — a limit that does not exist,
+ * naming the table it had just refused where it promised a database. The
+ * library's explanation, the only part that said what was actually wrong, was
+ * dropped for that description.
+ * [appwrite/appwrite#15317](https://github.com/appwrite/appwrite/pull/15317)
+ * maps the refusal to the limit it really is and forwards the explanation, so
+ * the answer now reads:
+ *
+ *     400 column_limit_exceeded
+ *     Document size limit of 65535 exceeded. Cannot create collection.
+ *
+ * What that means for code like this one: a `400 column_limit_exceeded` is
+ * about the schema in the request, not about a quota on the project or the
+ * database. Dropping a column or shrinking a string size gets the same request
+ * through; there is no larger table allowance to ask for. The same type covers
+ * a schema with too many columns ("Attribute limit of 1017 exceeded"), and the
+ * deprecated Databases API spells it `attribute_limit_exceeded`.
+ *
+ * `table_limit_exceeded` and `collection_limit_exceeded` were retired by the
+ * same PR — nothing produces them any more, so code branching on either is
+ * branching on an answer that cannot arrive.
+ *
+ * @see https://appwrite.io/docs/references/cloud/server-php/tablesdb#createTable
+ * @throws Exception
+ */
+function createTablePastTheRowLimit(): array
+{
+    global $tablesDB, $databaseId;
+
+    // 4,000 characters of utf8mb4 spend 16,002 bytes of the row each. Five of
+    // them do not fit; a string past ~16,000 characters would, because it stops
+    // living in the row and starts costing a 20-byte pointer instead.
+    $wide = [];
+
+    for ($i = 0; $i < 5; $i++) {
+        $wide[] = ['key' => "wide{$i}", 'type' => 'string', 'size' => 4000, 'required' => false];
+    }
+
+    $tableId = ID::unique();
+    $refused = null;
+
+    try {
+        $table = $tablesDB->createTable(
+            databaseId: $databaseId,
+            tableId: $tableId,
+            name: 'Wide',
+            columns: $wide,
+        );
+
+        // Not every adapter limits the row width, so a create that went through
+        // is an answer too — clean it up and let the result say as much.
+        $tablesDB->deleteTable($databaseId, $table->id);
+    } catch (AppwriteException $e) {
+        // `attribute_limit_exceeded` is the same refusal on the Databases API.
+        if (
+            $e->getCode() !== 400
+            || !\in_array($e->getType(), ['column_limit_exceeded', 'attribute_limit_exceeded'], true)
+        ) {
+            throw $e;
+        }
+
+        $refused = [
+            'code' => $e->getCode(),
+            'type' => $e->getType(),
+            // The library's own explanation, forwarded since #15317: it names
+            // the limit that was hit, which is the part worth acting on.
+            'message' => $e->getMessage(),
+        ];
+    }
+
+    // A refused create is rolled back whole, so the id the first attempt asked
+    // for is still free: one column fewer, same request, and it goes through.
+    $fits = $tablesDB->createTable(
+        databaseId: $databaseId,
+        tableId: $tableId,
+        name: 'Wide',
+        columns: \array_slice($wide, 0, 4),
+    );
+
+    $tablesDB->deleteTable($databaseId, $fits->id);
+
+    return [
+        'call' => 'api.createTablePastTheRowLimit',
+        'response' => [
+            'refused' => $refused,
+            'columnsThatFit' => \count($fits->columns),
+            // What the table reports about the row it lives in, which is where
+            // to look before adding a column rather than after being refused.
+            'bytesUsed' => $fits->bytesUsed,
+            'bytesMax' => $fits->bytesMax,
+            'bytesFree' => $fits->bytesMax - $fits->bytesUsed,
+        ],
     ];
 }
 
@@ -752,6 +858,7 @@ $methods = [
     'listTables',
     'addRow',
     'deleteTable',
+    'createTablePastTheRowLimit',
     'deleteDatabase',
     'createBucket',
     'createFile',
