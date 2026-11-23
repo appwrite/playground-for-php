@@ -36,6 +36,7 @@ This playground doesn't include any PHP best practices but rather intended to sh
 * Count Users Past the Reported Total
 * Request Password Recovery
 * Log a User In From a Token Secret
+* Claim an Account With a Proven Provider Email
 * Create Function, Deployment and Executions
 
 Collections and documents were renamed to tables and rows in Appwrite 1.8. The
@@ -133,6 +134,43 @@ confirmation as something it gets a handful of tries at per user:
 
 `createSessionFromToken()` in `playground.php` shows the shape of that handling.
 
+### Claiming an account
+
+Appwrite lets whoever can prove an address outrank whoever only typed it. An
+account registered with an email it never verified is *claimed* when a provider
+vouches for that address: the registrant's password, every session it had and
+every token outstanding for it are revoked, and the address is recorded as
+proven.
+[appwrite/appwrite#15282](https://github.com/appwrite/appwrite/pull/15282) made
+that step atomic. The OAuth2 redirect and the id-token sign-in used to decide
+from a copy of the account read earlier and call a revoke that transacted only
+its own deletes, so nothing held the account still across the step: a session
+the registrant created meanwhile could commit after the revoke had scanned for
+what to delete and outlive it, and two claims of one address could each sweep
+what the other had just created — the later one writing its copy of the account
+back afterwards, password and all. The claim is now one transaction with the
+account re-read under its row lock, the "not proved yet" check made on that
+copy, and the revoke committed together with the verification write.
+
+For a caller that means:
+
+* every credential it held for that account is gone the moment the claim
+  commits. A token minted before it answers `401` on the exchange and has to be
+  minted again, the password stops signing in, and `users->listSessions()` comes
+  back without the sessions it used to list. There is nothing to retry: the
+  claim is the intended outcome, not a failure;
+* `emailVerification` reading `true` is the signal that the claim has already
+  happened, since the flag is now persisted inside it. A session created after
+  reading it is not swept by a second claim arriving late, and a request that
+  fails *after* the claim leaves the account proven rather than credential-less
+  and unverified;
+* the claim deliberately still runs when the account has MFA on. The session it
+  hands out carries the `oauth2` factor, so skipping it would let the claimant
+  in while leaving the registrant its password and its second factor.
+
+`claimAccountWithProviderEmail()` in `playground.php` signs in and reads back
+what the claim left of the account.
+
 ## Tests
 
 `composer test` runs the playground end to end against a stub Appwrite
@@ -144,12 +182,17 @@ user, and that the `429` reaches the caller in a shape it can act on
 (`tests/code-guesses.php`). It then lists a project holding more users than a
 `total` counts to, checking that the clamped total is read as a floor, that the
 rows past it are reachable with a cursor, and that `total: false` answers `0`
-without hiding the rows (`tests/list-total.php`). Last, it creates tables whose
+without hiding the rows (`tests/list-total.php`). It creates tables whose
 columns do not fit the row, checking that the refusal names the limit the
 columns hit instead of a quota on tables, that it explains which one, and that
 retrying with a schema that fits works under the same id
-(`tests/column-limit.php`). No Appwrite instance and no network access are
-needed.
+(`tests/column-limit.php`). It also claims an
+unverified account with a proven provider email against a stub that lets a
+second claim and a concurrent sign-in commit mid-claim, checking that the claim
+takes away every other way into the account, that `emailVerification` comes back
+from the claim itself, and that a claim arriving behind another one revokes
+nothing (`tests/account-claim.php`). No Appwrite instance and no network access
+are needed.
 
 ## Contributing
 

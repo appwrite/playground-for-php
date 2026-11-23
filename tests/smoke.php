@@ -41,6 +41,7 @@ $expectedCalls = [
     'api.countUsersPastTheCountLimit',
     'api.createRecovery',
     'api.createSessionFromToken',
+    'api.claimAccountWithProviderEmail',
     'api.createFunction',
     'api.createDeployment',
     'api.createExecution', // sync
@@ -82,6 +83,11 @@ $expectedRequests = [
     ['POST', '/v1/users'],
     ['POST', '/v1/users/playground-user/tokens'],
     ['POST', '/v1/account/sessions/token'],
+    // Claiming the account registered under the address the provider proves,
+    // then reading back what the claim left of it.
+    ['POST', '/v1/account/sessions/id-token'],
+    ['GET', '/v1/users/registrant'],
+    ['GET', '/v1/users/registrant/sessions'],
     ['POST', '/v1/functions'],
     ['POST', '/v1/functions/playground-function/deployments'],
     ['POST', '/v1/functions/playground-function/executions'],
@@ -146,6 +152,22 @@ try {
 
     if (!\str_contains($output, 'column_limit_exceeded')) {
         $failures[] = 'The playground did not report the refused schema as a column limit';
+    }
+
+    /**
+     * The stub's project holds an account registered under the address the
+     * playground's provider sign-in proves, so that sign-in claims it: every
+     * other way into the account goes, which leaves the claimant's session as
+     * the only one. That is the client-visible half of
+     * appwrite/appwrite#15282 — see `tests/account-claim.php` for the contract
+     * itself.
+     */
+    if (!\str_contains($output, '[onlyThisSessionLeft] => 1')) {
+        $failures[] = 'The playground saw a session other than its own survive the claim';
+    }
+
+    if (!\str_contains($output, '[emailVerification] => 1')) {
+        $failures[] = 'The playground read the claimed account as still unverified';
     }
 
     $remaining = $expectedCalls;
