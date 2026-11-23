@@ -4,9 +4,11 @@ require __DIR__ . '/global.inc.php';
 use Appwrite\AppwriteException;
 use Appwrite\Client;
 use Appwrite\Enums\ExecutionMethod;
+use Appwrite\Enums\IdTokenProvider;
 use Appwrite\Enums\Runtime;
 use Appwrite\ID;
 use Appwrite\InputFile;
+use Appwrite\Models\Session;
 use Appwrite\Permission;
 use Appwrite\Query;
 use Appwrite\Role;
@@ -51,6 +53,7 @@ $account = new Account($client);
  * - getAccount
  * - createRecovery
  * - createSessionFromToken
+ * - createIdTokenSession, and the account it claims
  */
 
 /**
@@ -599,6 +602,130 @@ function createSessionFromToken(): array
 }
 
 /**
+ * The address the provider vouches for in the sign-in below.
+ *
+ * The stub's project holds an account that was registered under this address by
+ * somebody who never proved it, so the sign-in claims that account — which is
+ * what appwrite/appwrite#15282 is about.
+ */
+const CLAIMED_EMAIL = 'claimed@example.com';
+
+/**
+ * An unsigned stand-in for the id token a provider hands a client.
+ *
+ * A real caller passes on the token the provider issued and nothing else:
+ * Appwrite verifies it against the provider's keys and reads the subject and
+ * the verified address out of it, so a token nobody signed is refused with
+ * `401`. This exists so the playground has something to send without a Google
+ * or Apple client in the loop.
+ */
+function providerIdToken(string $subject, string $email): string
+{
+    $segment = static fn (array $claims): string => \rtrim(
+        \strtr(\base64_encode((string) \json_encode($claims)), '+/', '-_'),
+        '='
+    );
+
+    return $segment(['alg' => 'none', 'typ' => 'JWT'])
+        . '.'
+        . $segment(['sub' => $subject, 'email' => $email, 'email_verified' => true])
+        . '.';
+}
+
+/**
+ * Sign in with a provider id token, and read what that did to the account the
+ * session landed on.
+ *
+ * When the address a provider vouches for belongs to an account that was
+ * registered under it but never proved it, signing in *claims* that account:
+ * the registrant's password, every session it had and every token outstanding
+ * for it are revoked, and the address is recorded as proven. Appwrite has
+ * always done that — somebody who can prove an address outranks somebody who
+ * only typed it — but
+ * [appwrite/appwrite#15282](https://github.com/appwrite/appwrite/pull/15282)
+ * made the whole step atomic: the account is re-read under its row lock, the
+ * "not proved yet" check is made on *that* copy, and the revoke and the
+ * verification write commit together. Before the fix the claim decided from a
+ * copy read earlier and revoked in a transaction of its own, so a session the
+ * registrant created meanwhile could outlive the revoke, and two claims of one
+ * address could each sweep what the other had just created.
+ *
+ * What that means for code like this one:
+ *
+ * - every credential the caller held for that account is gone the moment the
+ *   claim commits. A token minted before it now answers `401` on the exchange
+ *   and has to be minted again, and `users->listSessions()` comes back without
+ *   the sessions it used to list. There is nothing to retry — the claim is the
+ *   intended outcome, not a failure;
+ * - `emailVerification` reading `true` is the signal that the claim has already
+ *   happened. Since the flag is persisted inside the claim, a session created
+ *   after reading it is not swept by a late second claim, which is the ordering
+ *   the fix bought. A request that fails *after* the claim now also leaves the
+ *   account proven rather than credential-less and unverified;
+ * - the claim deliberately still runs when the account has MFA on. The session
+ *   it hands out carries the `oauth2` factor, so skipping it would let the
+ *   claimant in while leaving the registrant its password and second factor.
+ *
+ * Against a real instance the token below is refused with `401
+ * user_invalid_token` long before any of this, since no provider signed it.
+ *
+ * @see https://appwrite.io/docs/references/cloud/client-php/account#createIdTokenSession
+ * @throws Exception
+ */
+function claimAccountWithProviderEmail(): array
+{
+    global $account, $users;
+
+    try {
+        $session = $account->createIdTokenSession(
+            provider: IdTokenProvider::GOOGLE(),
+            idToken: providerIdToken('google-playground', CLAIMED_EMAIL),
+            name: 'Playground',
+        );
+    } catch (AppwriteException $e) {
+        if (!\in_array($e->getCode(), [400, 401, 409], true)) {
+            throw $e;
+        }
+
+        // 401: the provider token was not accepted — start the sign-in over.
+        // 400: the sign-in did not hold — show "could not sign you in" and stop.
+        // 409: that provider account is linked to a different user already.
+        return [
+            'call' => 'api.claimAccountWithProviderEmail',
+            'response' => [
+                'signedIn' => false,
+                'code' => $e->getCode(),
+                'type' => $e->getType(),
+                'message' => $e->getMessage(),
+            ],
+        ];
+    }
+
+    // The account the session belongs to, read back with the API key: the one
+    // that was registered under the address, now claimed for whoever proved it.
+    $claimed = $users->get(userId: $session->userId);
+    $sessions = $users->listSessions(userId: $session->userId);
+    $sessionIds = \array_map(static fn (Session $s): string => $s->id, $sessions->sessions);
+
+    return [
+        'call' => 'api.claimAccountWithProviderEmail',
+        'response' => [
+            'signedIn' => true,
+            'sessionId' => $session->id,
+            'userId' => $session->userId,
+            'factors' => $session->factors,
+            // Written by the claim itself, in the same commit as the revoke.
+            'emailVerification' => $claimed->emailVerification,
+            // The registrant's password, gone: its sign-in now answers `401`.
+            'passwordStillSet' => ($claimed->password ?? '') !== '',
+            // And its sessions with it, so the only one left is this sign-in's.
+            'sessionsLeft' => $sessionIds,
+            'onlyThisSessionLeft' => $sessionIds === [$session->id],
+        ],
+    ];
+}
+
+/**
  * Create a function
  *
  * @see https://appwrite.io/docs/references/cloud/server-php/functions#create
@@ -763,6 +890,7 @@ $methods = [
     'countUsersPastTheCountLimit',
     'createRecovery',
     'createSessionFromToken',
+    'claimAccountWithProviderEmail',
     'createFunction',
     'createDeployment',
     'createSyncExecution',

@@ -55,7 +55,14 @@ final class Stub
         return $file;
     }
 
-    public static function start(): self
+    /**
+     * `$env` asks for a variant of the stub: see `STUB_CLAIM_RACE`,
+     * `STUB_CLAIM_SESSION_RACE` and `STUB_OAUTH_CLAIM_PRE_15282` in
+     * `tests/stub-server.php` for the ones that are answered today.
+     *
+     * @param array<string, string> $env
+     */
+    public static function start(array $env = []): self
     {
         $root = \dirname(__DIR__);
         $port = self::freePort();
@@ -72,7 +79,7 @@ final class Stub
             [1 => ['file', '/dev/null', 'w'], 2 => $errors],
             $pipes,
             $root,
-            ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + \getenv()
+            ['STUB_LOG' => $requestLog, 'STUB_STATE' => $stateFile] + $env + \getenv()
         );
 
         if (!\is_resource($process)) {
