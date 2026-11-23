@@ -56,8 +56,10 @@ final class Stub
     }
 
     /**
-     * `$env` asks for a variant of the stub: see `STUB_CLAIM_RACE`,
-     * `STUB_CLAIM_SESSION_RACE` and `STUB_OAUTH_CLAIM_PRE_15282` in
+     * `$env` asks for a variant of the stub: see `STUB_COLUMN_LIMIT_PRE_15317`
+     * in `tests/stub-server.php` for the one that is answered today, and
+     * `STUB_CLAIM_RACE`, `STUB_CLAIM_SESSION_RACE` and
+     * `STUB_OAUTH_CLAIM_PRE_15282` in
      * `tests/stub-server.php` for the ones that are answered today.
      *
      * @param array<string, string> $env

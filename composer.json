@@ -37,6 +37,7 @@
       "@php tests/smoke.php",
       "@php tests/code-guesses.php",
       "@php tests/list-total.php",
+      "@php tests/column-limit.php",
       "@php tests/account-claim.php"
     ]
   },

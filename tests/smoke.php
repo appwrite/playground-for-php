@@ -29,6 +29,7 @@ $expectedCalls = [
     'api.listTables',
     'api.addRow',
     'api.deleteTable',
+    'api.createTablePastTheRowLimit',
     'api.deleteDatabase',
     'api.createBucket',
     'api.createFile',
@@ -60,6 +61,11 @@ $expectedRequests = [
     ['POST', '/v1/tablesdb/playground-db/tables/playground-table/columns/integer'],
     ['GET', '/v1/tablesdb/playground-db/tables'],
     ['POST', '/v1/tablesdb/playground-db/tables/playground-table/rows'],
+    ['DELETE', '/v1/tablesdb/playground-db/tables/playground-table'],
+    // A schema too wide for the row is refused, then the same create with one
+    // column fewer goes through — see `tests/column-limit.php`.
+    ['POST', '/v1/tablesdb/playground-db/tables'],
+    ['POST', '/v1/tablesdb/playground-db/tables'],
     ['DELETE', '/v1/tablesdb/playground-db/tables/playground-table'],
     ['DELETE', '/v1/tablesdb/playground-db'],
     ['POST', '/v1/storage/buckets'],
@@ -132,6 +138,20 @@ try {
      */
     if (!\str_contains($output, '5,000+')) {
         $failures[] = 'The playground printed a clamped list total without marking it as a floor';
+    }
+
+    /**
+     * The refusal the playground prints has to be the one appwrite/appwrite#15317
+     * made it: a limit on the columns asked for, explained. The description it
+     * replaced promised a quota on tables that never existed, which is what sent
+     * the reporter of HS-1471398 looking for a bigger one.
+     */
+    if (\str_contains($output, 'table_limit_exceeded') || \str_contains($output, 'maximum number of tables')) {
+        $failures[] = 'The playground reported a schema that does not fit as a limit on tables';
+    }
+
+    if (!\str_contains($output, 'column_limit_exceeded')) {
+        $failures[] = 'The playground did not report the refused schema as a column limit';
     }
 
     /**

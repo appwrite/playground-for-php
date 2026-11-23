@@ -15,6 +15,14 @@
  * the console to read as `5,000+`, and what a server reading the same list has
  * to page past to learn the real number. See `tests/list-total.php`.
  *
+ * The table routes keep their tables in the same file and weigh the columns a
+ * create asks for the way an SQL adapter does: a count against `COLUMN_LIMIT`
+ * and a row width against `ROW_SIZE_LIMIT`. Past either one the create is
+ * refused with the limit it actually hit and the library's explanation of it,
+ * which is what appwrite/appwrite#15317 fixed; `STUB_COLUMN_LIMIT_PRE_15317`
+ * asks for the answer it used to give, a limit on the number of tables in the
+ * database. See `tests/column-limit.php`.
+ *
  * The routes that confirm a secret are the ones with state behind them. They
  * count wrong guesses per project, route and user in the file named by
  * `STUB_STATE`, the way the server keys those abuse limits, and answer `429`
@@ -70,6 +78,36 @@ const SEARCHED_USER_POPULATION = 7;
  * `APP_LIMIT_LIST_DEFAULT`.
  */
 const LIST_LIMIT_DEFAULT = 25;
+
+/**
+ * The row a table's columns have to fit into, in bytes: the `documentSize`
+ * limit every SQL adapter in utopia-php/database declares.
+ */
+const ROW_SIZE_LIMIT = 65535;
+
+/**
+ * What the internal columns (`_id`, `_uid`, `_tenant`, `_createdAt`,
+ * `_updatedAt`, `_permissions`) already spend of that row before the caller's
+ * first column.
+ */
+const ROW_SIZE_INTERNAL = 1067;
+
+/**
+ * Longest string a column stores inside the row. Anything longer becomes a
+ * `TEXT` kept outside it, so only a 20-byte pointer counts against the row.
+ */
+const VARCHAR_LIMIT = 16381;
+
+/**
+ * Columns a table can hold, the internal ones included: the adapter's
+ * `attributes` limit.
+ */
+const COLUMN_LIMIT = 1017;
+
+/**
+ * Internal columns that count against `COLUMN_LIMIT` alongside the caller's.
+ */
+const INTERNAL_COLUMNS = 6;
 
 /**
  * The timestamp every document the stub hands back claims to be from.
@@ -178,7 +216,7 @@ function body(): array
  * Read the stub's state, run `$change` over it and write back what it returns.
  *
  * Everything the stub remembers between requests lives in here: the guess
- * counters below, and the accounts, sessions and tokens further down.
+ * counters below, and the tables, accounts, sessions and tokens further down.
  *
  * The file lock is held across the read and the write, so a `$change` that
  * reads a value and writes it back cannot be interleaved with another request
@@ -937,6 +975,220 @@ if ($method === 'GET' && matchesPattern('/v1/users/*', $path)) {
     respond(200, accountDocument($account));
 }
 
+/**
+ * The id every table the stub creates comes back with, whatever id the create
+ * asked for. Fixed ids are what keep the paths the tests expect determined.
+ */
+const TABLE_ID = 'playground-table';
+
+/**
+ * Does the stub answer a schema that does not fit the way Appwrite did before
+ * appwrite/appwrite#15317?
+ */
+function pre15317(): bool
+{
+    return \in_array(\getenv('STUB_COLUMN_LIMIT_PRE_15317'), ['1', 'true'], true);
+}
+
+/**
+ * The stored tables, keyed by table id.
+ *
+ * @return array<string, array<string, mixed>>
+ */
+function storedTables(): array
+{
+    return (array) (state(static fn (array $stored): array => $stored)['tables'] ?? []);
+}
+
+/**
+ * Run `$change` over the stored tables and write back what it returns.
+ *
+ * @param callable(array<string, array<string, mixed>>): array<string, array<string, mixed>> $change
+ */
+function changeTables(callable $change): void
+{
+    state(static function (array $stored) use ($change): array {
+        $stored['tables'] = $change((array) ($stored['tables'] ?? []));
+
+        return $stored;
+    });
+}
+
+/**
+ * What one column spends of the row, the way an SQL adapter weighs it.
+ *
+ * A string is the interesting case: up to `VARCHAR_LIMIT` characters it lives
+ * in the row and costs four bytes per character, and past that it becomes a
+ * `TEXT` stored outside the row that only costs a pointer. So the columns that
+ * fill up a row are the mid-sized ones, not the largest.
+ *
+ * @param array<string, mixed> $column
+ */
+function columnWidth(array $column): int
+{
+    $size = (int) ($column['size'] ?? 0);
+
+    if (($column['array'] ?? false) === true) {
+        return 20;
+    }
+
+    return match ((string) ($column['type'] ?? '')) {
+        'string' => match (true) {
+            $size > VARCHAR_LIMIT => 20,
+            $size > 255 => $size * 4 + 2,
+            default => $size * 4 + 1,
+        },
+        'integer' => $size >= 8 ? 8 : 4,
+        'double' => 8,
+        'boolean' => 1,
+        'datetime' => 7,
+        default => 20,
+    };
+}
+
+/**
+ * A table as a response model.
+ *
+ * @param array<string, mixed> $table
+ * @return array<string, mixed>
+ */
+function tableDocument(array $table): array
+{
+    return [
+        '$id' => TABLE_ID,
+        '$createdAt' => STUB_TIMESTAMP,
+        '$updatedAt' => STUB_TIMESTAMP,
+        '$permissions' => $table['permissions'],
+        'databaseId' => $table['databaseId'],
+        'name' => $table['name'],
+        'description' => '',
+        'enabled' => true,
+        'rowSecurity' => false,
+        'columns' => $table['columns'],
+        'indexes' => [],
+        'bytesMax' => ROW_SIZE_LIMIT,
+        'bytesUsed' => $table['bytesUsed'],
+    ];
+}
+
+/**
+ * Refuse a create whose own columns do not fit, and say which limit they hit.
+ */
+function columnLimitExceeded(string $cause): never
+{
+    if (pre15317()) {
+        respond(400, [
+            'message' => "The maximum number of tables for database '" . TABLE_ID . "' has been reached.",
+            'type' => 'table_limit_exceeded',
+            'code' => 400,
+        ]);
+    }
+
+    respond(400, [
+        'message' => $cause,
+        'type' => 'column_limit_exceeded',
+        'code' => 400,
+    ]);
+}
+
+/**
+ * `POST /v1/tablesdb/{databaseId}/tables`: create a table, columns and all.
+ *
+ * A refused create leaves nothing behind, so the same id is free for a retry
+ * with a schema that fits.
+ */
+function createTable(string $databaseId): never
+{
+    $body = body();
+    $columns = \array_values((array) ($body['columns'] ?? []));
+
+    if (\count($columns) + INTERNAL_COLUMNS > COLUMN_LIMIT) {
+        columnLimitExceeded('Attribute limit of ' . COLUMN_LIMIT . ' exceeded. Cannot create collection.');
+    }
+
+    $bytesUsed = \array_sum(\array_map('columnWidth', $columns)) + ROW_SIZE_INTERNAL;
+
+    if ($bytesUsed > ROW_SIZE_LIMIT) {
+        columnLimitExceeded('Document size limit of ' . ROW_SIZE_LIMIT . ' exceeded. Cannot create collection.');
+    }
+
+    if (isset(storedTables()[TABLE_ID])) {
+        respond(409, [
+            'message' => "A table with the requested ID '" . TABLE_ID . "' already exists."
+                . ' Try again with a different ID or use ID.unique() to generate a unique ID.',
+            'type' => 'table_already_exists',
+            'code' => 409,
+        ]);
+    }
+
+    $table = [
+        'databaseId' => $databaseId,
+        'name' => (string) ($body['name'] ?? ''),
+        'permissions' => \array_values((array) ($body['permissions'] ?? [])),
+        'columns' => \array_map(
+            static fn (array $column): array => $column + ['status' => 'available', 'error' => ''],
+            $columns
+        ),
+        'bytesUsed' => $bytesUsed,
+    ];
+
+    changeTables(static function (array $tables) use ($table): array {
+        $tables[TABLE_ID] = $table;
+
+        return $tables;
+    });
+
+    respond(201, tableDocument($table));
+}
+
+function tableNotFound(string $tableId): never
+{
+    respond(404, [
+        'message' => "Table with the requested ID '{$tableId}' could not be found.",
+        'type' => 'table_not_found',
+        'code' => 404,
+    ]);
+}
+
+if ($method === 'POST' && matchesPattern('/v1/tablesdb/*/tables', $path)) {
+    createTable(\explode('/', $path)[3]);
+}
+
+if ($method === 'GET' && matchesPattern('/v1/tablesdb/*/tables', $path)) {
+    $tables = storedTables();
+
+    respond(200, [
+        'total' => \count($tables),
+        'tables' => \array_map('tableDocument', \array_values($tables)),
+    ]);
+}
+
+if ($method === 'GET' && matchesPattern('/v1/tablesdb/*/tables/*', $path)) {
+    $tableId = \basename($path);
+    $table = storedTables()[$tableId] ?? null;
+
+    if ($table === null) {
+        tableNotFound($tableId);
+    }
+
+    respond(200, tableDocument($table));
+}
+
+if ($method === 'DELETE' && matchesPattern('/v1/tablesdb/*/tables/*', $path)) {
+    $tableId = \basename($path);
+
+    if (!isset(storedTables()[$tableId])) {
+        tableNotFound($tableId);
+    }
+
+    changeTables(static function (array $tables) use ($tableId): array {
+        unset($tables[$tableId]);
+
+        return $tables;
+    });
+
+    respond(204);
+}
 
 /**
  * @var array<int, array{0: string, 1: string, 2: int, 3: array<string, mixed>|null}>
