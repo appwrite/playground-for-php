@@ -670,7 +670,7 @@ function providerIdToken(string $subject, string $email): string
  * user_invalid_token` long before any of this, since no provider signed it; the
  * read that follows works all the same.
  *
- * @see https://appwrite.io/docs/references/cloud/client-php/account#createSession
+ * @see https://appwrite.io/docs/references/cloud/client-php/account#createIdTokenSession
  * @throws Exception
  */
 function linkIdentityFromIdToken(): array
