@@ -35,6 +35,7 @@ This playground doesn't include any PHP best practices but rather intended to sh
 * Count Users Past the Reported Total
 * Request Password Recovery
 * Log a User In From a Token Secret
+* Link a Provider Identity From a Native Sign-In
 * Create Function, Deployment and Executions
 
 Collections and documents were renamed to tables and rows in Appwrite 1.8. The
@@ -91,6 +92,39 @@ confirmation as something it gets a handful of tries at per user:
 
 `createSessionFromToken()` in `playground.php` shows the shape of that handling.
 
+### Provider emails and identities
+
+A native sign-in hands Appwrite the id token the provider gave your client, and
+the first time a provider account is seen Appwrite links it to a user as an
+identity: the account already holding that verified address if there is one,
+otherwise a new account it creates for it.
+
+A provider email is only ever held by the identities of a single user. It is not
+a unique index — one user may hold several identities reporting the same address,
+the same person signing in with Google and with Apple — so the rule is enforced
+by the link itself, and
+[appwrite/appwrite#15300](https://github.com/appwrite/appwrite/pull/15300) made
+it hold under concurrency. Reading the ownership before the insert is a
+time-of-check race: two sign-ins presenting one verified address at the same
+moment both came up clean and both wrote, leaving the address with two owners —
+two accounts a later sign-in could land on either of. The link now writes first
+and reads the ownership again afterwards, so the one that lost drops the row it
+wrote, and a refused link no longer leaves behind the account it had just created
+for the sign-in.
+
+For a caller that means:
+
+* the refusal is `400 general_bad_request`, deliberately the answer a malformed
+  request gets. A `400` naming the conflict would tell whoever presented the
+  token that another account holds the address, so there is nothing to show the
+  person signing in beyond "that did not work" — and nothing to retry, since a
+  second attempt is refused the same way;
+* the address has one owner either way, which `users->listIdentities()` shows. If
+  that owner is a stale identity, a server holding an API key can clear the way
+  with `users->deleteIdentity()`.
+
+`linkIdentityFromIdToken()` in `playground.php` shows both halves.
+
 ## Tests
 
 `composer test` runs the playground end to end against a stub Appwrite
@@ -102,8 +136,12 @@ user, and that the `429` reaches the caller in a shape it can act on
 (`tests/code-guesses.php`). It then lists a project holding more users than a
 `total` counts to, checking that the clamped total is read as a floor, that the
 rows past it are reachable with a cursor, and that `total: false` answers `0`
-without hiding the rows (`tests/list-total.php`). No Appwrite instance and no
-network access are needed.
+without hiding the rows (`tests/list-total.php`). Finally it links provider
+identities against a stub that lets a competing linker commit mid-link, checking
+that a provider email comes out of that with exactly one owner, that the refusal
+discloses nothing and leaves nothing behind, and that one account may still hold
+several identities on one address (`tests/identity-email.php`). No Appwrite
+instance and no network access are needed.
 
 ## Contributing
 
